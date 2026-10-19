@@ -1,4 +1,4 @@
-# Loop Agent — Task Execution (ReAct Pattern) (React Native)
+# Loop Agent — Task Execution (ReAct Pattern, Parallel per-worktree) (React Native)
 
 > Engine thực thi từng task theo ReAct: Read → Plan → Act → Observe → Repeat.
 > Điều phối: `AGENTS.md` + `.agent/FEATURE_WORKFLOW.md`. State: `.context/progress.json` (`features[]`/`bugs[]`).
@@ -10,6 +10,60 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
 - **`/start`** (project start): sau khi `graph` sinh layer plan + user duyệt plan → loop chạy layer 0 → …. (Đây là đường vào chính của initial build.)
 - `change-request` hoặc `/change` chia xong phase/task (feature/bug)
 - Hoặc resume từ `.context/progress.json`
+
+---
+
+## Parallel Execution Model (worktree-per-task)
+
+> Đọc trước khi chạy 1 layer. Khi layer chỉ có 1 task → bỏ qua fan-out, chạy trực tiếp như cũ.
+> Trong 1 layer, các task độc lập chạy **SONG SONG** — mỗi task 1 **git worktree riêng**, mỗi builder agent chạy loop đầy đủ trong worktree của mình. 1 agent **merger** gom lại.
+
+```
+  DISPATCHER (loop chính): plan --layer N → các wave
+        │  với mỗi wave: spawn SONG SONG
+   ┌────┼────┐
+ BUILDER BUILDER BUILDER   mỗi con 1 worktree riêng, chạy FULL loop
+ (.wt/)  (.wt/)  (.wt/)    (Read→Plan→Act→Observe→Review→Commit)
+   └────┼────┘
+        ▼  (tất cả PASS + committed)
+  MERGER (1 con): merge --layer N → verify tổng thể → update progress.json 1 lần → cleanup
+        ▼
+  HUMAN CHECKPOINT → layer N+1
+```
+
+### Đảm bảo độc lập — không giẫm chân nhau
+1. **Nguồn gốc**: graph đã đảm bảo *task trong cùng layer không phụ thuộc nhau*.
+2. **Check file trùng**: `plan --layer N` đọc **Files to Create/Modify** của mỗi task; 2 task khai trùng file → **không xếp cùng wave** (đẩy task sau sang wave kế).
+3. **Cô lập vật lý**: mỗi task 1 **git worktree + branch riêng** (`.worktrees/<...>`, branch `wt/<...>`) → builder không thể ghi đè file của builder khác.
+4. **State không tranh chấp**: builder con **KHÔNG** tự ghi `.context/progress.json`. Chỉ **merger** ghi tập trung 1 lần (chống race condition).
+
+### Dispatcher steps (mỗi layer)
+```
+1. node scripts/parallel-dispatch.mjs plan --layer N   → { waves: [[task...], ...] }
+2. Với MỖI wave (tuần tự giữa wave, song song TRONG wave):
+   a. mỗi task: node scripts/parallel-dispatch.mjs setup --task <layer-N/task-NN>  → { worktree, branch }
+   b. spawn SONG SONG 1 builder/task (sessions_spawn, context="isolated"):
+      "cd <worktree>; chạy FULL loop cho <task file>; chỉ touch file trong scope;
+       commit trong worktree; KHÔNG ghi progress.json; báo PASS/BLOCKED về."
+   c. đợi TẤT CẢ builder trong wave xong.
+3. Hết wave → gọi MERGER.
+```
+
+### Merger steps (1 con, sau khi layer xong)
+```
+1. node scripts/parallel-dispatch.mjs merge --layer N
+   → gom mọi branch wt/layer-N__* về integration branch layer-N-integration.
+   → CONFLICT → DỪNG: cho task đó chạy LẠI TUẦN TỰ trên integration branch, ghi error-memory.md.
+2. Verify TỔNG THỂ trên integration branch (typecheck/lint/test theo project-config) — từng task pass riêng KHÔNG đảm bảo ghép lại pass. FAIL → error-analyzer → fix → verify lại.
+3. Update `.context/progress.json` 1 LẦN (atomic): completedTasks/blockedTasks/currentLayer/lastUpdated.
+4. Merge integration branch về nhánh chính (theo DevOps/git policy).
+5. node scripts/parallel-dispatch.mjs cleanup --layer N
+6. → context-manager compact → HUMAN CHECKPOINT → layer N+1.
+```
+
+> Một task tại một thời điểm **chỉ trong 1 builder** (1 worktree). Song song xảy ra **giữa các builder** — không phải trong 1 builder. Builder commit trong worktree + review riêng, **không** tự ghi state/merge; merger lo gom.
+
+---
 
 ## Pattern
 
