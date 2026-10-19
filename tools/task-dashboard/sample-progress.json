@@ -1,0 +1,27 @@
+{
+  "projectName": "acme-crm",
+  "currentLayer": 1,
+  "totalLayers": 4,
+  "completedTasks": [
+    "layer-0/task-01",
+    "layer-0/task-02",
+    "layer-0/task-03",
+    "layer-1/task-01"
+  ],
+  "inProgressTask": "layer-1/task-02",
+  "blockedTasks": [
+    {
+      "task": "layer-1/task-04",
+      "reason": "Chờ API key của payment provider",
+      "since": "2026-10-19T06:12:00.000Z"
+    }
+  ],
+  "decisions": [
+    {
+      "date": "2026-10-18T09:30:00.000Z",
+      "decision": "Dùng JWT thay vì session",
+      "reason": "Stateless, dễ scale"
+    }
+  ],
+  "lastUpdated": "2026-10-19T08:20:00.000Z"
+}

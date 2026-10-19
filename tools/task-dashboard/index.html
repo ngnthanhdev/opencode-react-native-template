@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Task Office — opencode parallel loop</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0a20'/%3E%3Crect x='7' y='7' width='18' height='18' rx='4' fill='none' stroke='%233FE0FF' stroke-width='2.5'/%3E%3Crect x='12' y='12' width='8' height='8' rx='2' fill='%237A5CFF'/%3E%3C/svg%3E" />
+<style>
+  :root{
+    --cyan:#3FE0FF; --violet:#7A5CFF; --lav:#C9B8FF; --mint:#5BE7C4;
+    --red:#FF5C7A; --amber:#FFC65C; --ink:#F2EEFF; --dim:#9C93C4;
+    --bg0:#07060F; --bg1:#120C28; --panel:rgba(22,16,48,.78);
+    --line:rgba(140,120,255,.22);
+    --mono:ui-monospace,SFMono-Regular,"JetBrains Mono","Fira Code",Menlo,Consolas,monospace;
+    --sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; overflow:hidden; color:var(--ink); font-family:var(--sans);
+    background:
+      radial-gradient(1100px 620px at 22% -10%, #1d1550 0%, transparent 62%),
+      radial-gradient(900px 560px at 92% 108%, #12234a 0%, transparent 60%),
+      linear-gradient(160deg,var(--bg0),var(--bg1) 55%,#070512);
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:1; opacity:.5;
+    background-image:radial-gradient(rgba(120,150,255,.10) 1px, transparent 1px);
+    background-size:34px 34px;
+    mask-image:radial-gradient(ellipse at 50% 45%, #000 20%, transparent 78%);
+  }
+  body::after{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:2; opacity:.35;
+    background:repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 3px);
+    mix-blend-mode:overlay;
+  }
+
+  /* ─────────── khung game ─────────── */
+  #app{position:fixed; inset:0; display:flex; flex-direction:column; z-index:3}
+
+  .hud{
+    position:relative; z-index:30; flex:0 0 auto;
+    display:flex; align-items:center; gap:14px;
+    padding:10px 18px; margin:10px 12px 0;
+    background:linear-gradient(180deg, rgba(38,28,80,.92), rgba(18,13,40,.9));
+    border:1px solid var(--line); border-radius:14px;
+    box-shadow:0 8px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(200,180,255,.16);
+    backdrop-filter:blur(8px);
+  }
+  .brand{display:flex; align-items:center; gap:10px; min-width:0}
+  .logo{
+    width:34px;height:34px;border-radius:10px;flex:0 0 auto;
+    background:conic-gradient(from 200deg,var(--cyan),var(--violet),var(--lav),var(--cyan));
+    box-shadow:0 0 18px rgba(90,200,255,.5); position:relative;
+  }
+  .logo::after{
+    content:""; position:absolute; inset:7px; border-radius:5px;
+    background:#0d0a20; box-shadow:inset 0 0 8px rgba(63,224,255,.55);
+  }
+  .brand .txt{min-width:0}
+  .brand .pname{
+    font-family:var(--mono); font-weight:700; font-size:15px; letter-spacing:.4px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:34vw;
+    background:linear-gradient(90deg,#fff,var(--lav)); -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .brand .sub{font-size:10.5px; color:var(--dim); letter-spacing:2.4px; text-transform:uppercase}
+
+  .chip{
+    font-family:var(--mono); font-size:11px; letter-spacing:1.2px; padding:4px 9px;
+    border-radius:999px; border:1px solid var(--line); color:var(--lav);
+    background:rgba(122,92,255,.12); white-space:nowrap;
+  }
+  .chip.demo{color:#0b0718;background:linear-gradient(90deg,var(--amber),#ff9f5c);border-color:transparent;font-weight:700}
+  .chip.layer{color:var(--cyan); border-color:rgba(63,224,255,.4); background:rgba(63,224,255,.09)}
+  .chip.layer b{color:#fff}
+
+  .spacer{flex:1 1 auto}
+
+  .counters{display:flex; gap:8px; align-items:center}
+  .ctr{
+    display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:12.5px;
+    padding:5px 10px; border-radius:9px; border:1px solid var(--line);
+    background:rgba(10,8,26,.6); min-width:56px; justify-content:center;
+  }
+  .ctr b{font-size:14px}
+  .ctr.run{color:var(--cyan); border-color:rgba(63,224,255,.32)}
+  .ctr.done{color:var(--mint); border-color:rgba(91,231,196,.3)}
+  .ctr.blk{color:var(--red); border-color:rgba(255,92,122,.3)}
+  .dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+  .dot.live{animation:blip 1.6s infinite}
+
+  .clock{font-family:var(--mono); font-size:13px; color:var(--lav); letter-spacing:1px; padding-left:4px}
+  .conn{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--mint);letter-spacing:1.4px}
+  .conn .dot{animation:blip 1.6s infinite}
+  .conn.off{color:var(--red)}
+  .iconbtn{
+    border:1px solid var(--line); background:rgba(10,8,26,.6); color:var(--lav);
+    font-family:var(--mono); font-size:11px; padding:6px 10px; border-radius:9px; cursor:pointer;
+    transition:.18s;
+  }
+  .iconbtn:hover{color:#fff;border-color:rgba(63,224,255,.5);box-shadow:0 0 14px rgba(63,224,255,.2)}
+
+  /* ─────────── sân khấu ─────────── */
+  #main{position:relative; flex:1 1 auto; display:flex; min-height:0}
+  #stageWrap{position:relative; flex:1 1 auto; overflow:hidden}
+  #stage{
+    position:absolute; left:50%; top:50%; width:1480px; height:900px;
+    transform-origin:50% 50%;
+    transform:translate(-50%,-50%) scale(var(--k,1));
+  }
+  #iso{position:absolute; inset:0; overflow:visible; filter:drop-shadow(0 26px 40px rgba(0,0,0,.55))}
+  #chars,#bubbles{position:absolute; inset:0; pointer-events:none}
+  #chars{pointer-events:none}
+
+  /* HUD dưới */
+  .bottom{
+    position:relative; z-index:30; flex:0 0 auto; margin:0 12px 10px;
+    padding:9px 14px 11px; border:1px solid var(--line); border-radius:14px;
+    background:linear-gradient(180deg, rgba(24,17,52,.86), rgba(12,9,28,.92));
+    box-shadow:0 -8px 30px rgba(0,0,0,.4), inset 0 1px 0 rgba(200,180,255,.12);
+    backdrop-filter:blur(8px);
+  }
+  .barrow{display:flex; align-items:center; gap:12px}
+  .barlabel{font-family:var(--mono); font-size:10.5px; letter-spacing:1.8px; color:var(--dim); text-transform:uppercase; white-space:nowrap}
+  .bar{
+    position:relative; flex:1 1 auto; height:16px; border-radius:9px; overflow:hidden;
+    background:rgba(8,6,20,.9); border:1px solid rgba(120,100,220,.28);
+    box-shadow:inset 0 2px 8px rgba(0,0,0,.7);
+    display:flex;
+  }
+  .seg{height:100%; transition:width .6s cubic-bezier(.3,1,.4,1); position:relative}
+  .seg.done{background:linear-gradient(180deg,#7ff3d2,#2fbb95)}
+  .seg.run{background:linear-gradient(180deg,#8ceaff,#2f9fd6)}
+  .seg.run::after{
+    content:""; position:absolute; inset:0;
+    background:repeating-linear-gradient(115deg,rgba(255,255,255,.35) 0 6px,transparent 6px 14px);
+    animation:slip .9s linear infinite; opacity:.55;
+  }
+  .seg.blk{background:linear-gradient(180deg,#ff8aa0,#d63a5d)}
+  .seg.wait{background:rgba(120,105,180,.28)}
+  .barpct{font-family:var(--mono); font-size:12.5px; color:var(--ink); min-width:52px; text-align:right}
+  .legend{display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:11px; color:var(--dim); font-family:var(--mono)}
+  .legend span{display:inline-flex; align-items:center; gap:5px}
+  .sw{width:9px;height:9px;border-radius:2px}
+
+  /* ─────────── nhân vật ─────────── */
+  .chr{
+    position:absolute; width:64px; height:68px; opacity:0;
+    transform:translate(-50%,-100%);
+    transition:left .6s cubic-bezier(.25,1.1,.45,1), top .6s cubic-bezier(.25,1.1,.45,1),
+               opacity .35s ease, filter .35s ease;
+    pointer-events:auto;
+  }
+  .chr.in{opacity:1}
+  .chr.out{opacity:0; filter:blur(2px)}
+  .chr.stale{filter:saturate(.55)}
+  .bob{position:absolute; left:0; bottom:0; width:64px; height:68px; animation:bob 3.2s ease-in-out infinite}
+  .chr.running .bob{animation-duration:2.2s}
+  .sprite{position:absolute; left:50%; bottom:0; width:52px; height:64px; transform:translateX(-50%)}
+
+  .torso{
+    position:absolute; bottom:0; left:8px; width:36px; height:33px; border-radius:14px 14px 7px 7px;
+    background:linear-gradient(180deg,var(--shirt,#2b6cff),var(--shirt2,#173a8f));
+    box-shadow:inset 0 -6px 10px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.35);
+  }
+  .torso::after{
+    content:""; position:absolute; left:50%; top:6px; width:2px; height:20px; transform:translateX(-50%);
+    background:rgba(255,255,255,.14); border-radius:2px;
+  }
+  .arm{
+    position:absolute; bottom:1px; width:9px; height:21px; border-radius:5px;
+    background:linear-gradient(180deg,var(--shirt,#2b6cff),var(--shirt2,#173a8f));
+    transform-origin:50% 12%; z-index:3;
+    box-shadow:inset -2px 0 4px rgba(0,0,0,.25);
+  }
+  .arm.l{left:3px}
+  .arm.r{right:3px}
+  .arm::after{
+    content:""; position:absolute; left:50%; bottom:-3px; width:8px; height:8px; border-radius:50%;
+    transform:translateX(-50%); background:var(--skin,#f7c9a3);
+  }
+  .chr.running .arm.l{animation:typel 0.42s steps(2,end) infinite}
+  .chr.running .arm.r{animation:typer 0.42s steps(2,end) infinite .12s}
+
+  .head{
+    position:absolute; bottom:27px; left:11px; width:30px; height:30px; border-radius:50%;
+    background:radial-gradient(circle at 36% 30%, #ffe4cd, var(--skin,#f3bd93) 72%);
+    box-shadow:inset -3px -3px 6px rgba(120,60,40,.22), 0 2px 5px rgba(0,0,0,.35);
+    z-index:4;
+  }
+  .head::before{
+    content:""; position:absolute; left:-3px; right:-3px; top:-4px; height:20px;
+    border-radius:16px 16px 46% 46%;
+    background:linear-gradient(140deg,var(--h1,#3FE0FF),var(--h2,#7A5CFF));
+    box-shadow:0 2px 8px rgba(63,224,255,.25);
+  }
+  .head::after{
+    content:""; position:absolute; left:1px; top:8px; width:12px; height:7px;
+    border-radius:0 0 60% 30%; background:linear-gradient(140deg,var(--h1,#3FE0FF),var(--h2,#7A5CFF));
+    transform:rotate(-8deg); opacity:.95;
+  }
+  .eye{
+    position:absolute; top:15px; width:3.2px; height:4.6px; border-radius:50%;
+    background:#241a3d; z-index:5;
+  }
+  .eye.l{left:8px} .eye.r{right:8px}
+  .eye::after{content:"";position:absolute;left:.4px;top:.4px;width:1.2px;height:1.4px;border-radius:50%;background:#fff;opacity:.85}
+  .mouth{
+    position:absolute; left:50%; top:21px; width:7px; height:3.6px; transform:translateX(-50%);
+    border-radius:0 0 8px 8px; border-bottom:1.6px solid rgba(36,26,61,.7); z-index:5;
+  }
+  .chr.blocked .mouth{border-radius:8px 8px 0 0; border-bottom:0; border-top:1.6px solid rgba(36,26,61,.8); height:2px; top:23px}
+
+  .badge{
+    position:absolute; top:-4px; right:-4px; width:20px; height:20px; border-radius:50%;
+    display:grid; place-items:center; font-size:11px; z-index:8;
+    background:rgba(9,7,22,.9); border:1px solid rgba(255,255,255,.18);
+    box-shadow:0 2px 8px rgba(0,0,0,.5);
+  }
+  .chr.done .badge{background:rgba(20,60,48,.95); border-color:rgba(91,231,196,.6); box-shadow:0 0 12px rgba(91,231,196,.5)}
+  .chr.blocked .badge{background:rgba(64,14,30,.95); border-color:rgba(255,92,122,.65); box-shadow:0 0 12px rgba(255,92,122,.45); animation:blip 1.8s infinite}
+
+  /* bong bóng task */
+  .bubble{
+    position:absolute; bottom:calc(100% + 2px); left:50%; transform:translateX(-50%) translateY(4px);
+    max-width:170px; padding:4px 8px 5px; border-radius:9px;
+    background:linear-gradient(180deg, rgba(30,22,64,.97), rgba(16,11,38,.97));
+    border:1px solid rgba(63,224,255,.45); color:#EAF6FF;
+    font-family:var(--mono); font-size:10.5px; line-height:1.2; letter-spacing:.2px;
+    box-shadow:0 6px 18px rgba(0,0,0,.55), 0 0 14px rgba(63,224,255,.14);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    opacity:0; transition:opacity .25s, transform .25s; pointer-events:none;
+  }
+  .chr.in .bubble{opacity:1; transform:translateX(-50%) translateY(0)}
+  .bubble::after{
+    content:""; position:absolute; left:50%; bottom:-5px; width:8px; height:8px;
+    transform:translateX(-50%) rotate(45deg);
+    background:linear-gradient(135deg, rgba(16,11,38,.97), rgba(16,11,38,.97));
+    border-right:1px solid rgba(63,224,255,.45); border-bottom:1px solid rgba(63,224,255,.45);
+  }
+  .bubble .who{color:var(--cyan); opacity:.85; font-size:9px; letter-spacing:1px; display:block; margin-top:1px}
+  .chr.done .bubble{border-color:rgba(91,231,196,.5); box-shadow:0 6px 18px rgba(0,0,0,.55),0 0 14px rgba(91,231,196,.15)}
+  .chr.done .bubble .who{color:var(--mint)}
+  .chr.blocked .bubble{border-color:rgba(255,92,122,.65); box-shadow:0 6px 18px rgba(0,0,0,.55),0 0 16px rgba(255,92,122,.2)}
+  .chr.blocked .bubble .who{color:var(--red)}
+  .chr.stale .bubble .who{color:var(--amber)}
+
+  /* tooltip reason */
+  .tip{
+    position:absolute; bottom:calc(100% + 34px); left:50%; transform:translateX(-50%) scale(.96);
+    width:196px; padding:8px 10px; border-radius:10px; z-index:60;
+    background:rgba(48,10,24,.97); border:1px solid rgba(255,92,122,.6); color:#FFE7EC;
+    font-size:11px; line-height:1.4; box-shadow:0 12px 30px rgba(0,0,0,.6);
+    opacity:0; pointer-events:none; transition:.18s;
+  }
+  .tip b{display:block; color:var(--red); font-family:var(--mono); font-size:9.5px; letter-spacing:1.4px; margin-bottom:3px}
+  .chr.blocked:hover .tip{opacity:1; transform:translateX(-50%) scale(1)}
+
+  /* ─────────── Eve ─────────── */
+  #eve{
+    position:absolute; width:96px; height:118px; transform:translate(-50%,-100%);
+    pointer-events:auto; transition:filter .4s;
+    filter:drop-shadow(0 10px 16px rgba(0,0,0,.5));
+  }
+  #eve .aura{
+    position:absolute; left:50%; bottom:-6px; width:110px; height:52px; transform:translateX(-50%);
+    border-radius:50%; opacity:0; transition:opacity .5s;
+    background:radial-gradient(ellipse at center, rgba(63,224,255,.55), rgba(122,92,255,.25) 45%, transparent 70%);
+    filter:blur(4px);
+  }
+  #eve.active .aura{opacity:1; animation:auraPulse 2.4s ease-in-out infinite}
+  #eve .ring{
+    position:absolute; left:50%; bottom:-4px; width:86px; height:34px; transform:translateX(-50%);
+    border-radius:50%; border:1.5px solid rgba(63,224,255,.55); opacity:0;
+  }
+  #eve.active .ring{opacity:1; animation:ringPulse 2.4s ease-out infinite}
+  #eve .body{position:absolute; left:50%; bottom:0; width:64px; height:102px; transform:translateX(-50%)}
+
+  #eve .leg{position:absolute; bottom:0; width:9px; height:26px; border-radius:5px; background:linear-gradient(180deg,#2a2158,#171034)}
+  #eve .leg.l{left:20px} #eve .leg.r{right:20px}
+  #eve .shoe{position:absolute; bottom:-2px; width:13px; height:6px; border-radius:4px; background:#0d0a20; box-shadow:0 0 8px rgba(63,224,255,.4)}
+  #eve .shoe.l{left:17px} #eve .shoe.r{right:17px}
+
+  #eve .skirt{
+    position:absolute; bottom:20px; left:50%; width:52px; height:26px; transform:translateX(-50%);
+    background:linear-gradient(180deg,#2b2a6e,#1a1445);
+    clip-path:polygon(18% 0,82% 0,100% 100%,0 100%);
+    box-shadow:inset 0 -6px 10px rgba(0,0,0,.4);
+  }
+  #eve .torso{
+    position:absolute; bottom:42px; left:50%; width:42px; height:32px; transform:translateX(-50%);
+    border-radius:13px 13px 6px 6px;
+    background:linear-gradient(150deg,#dfe9ff 0%, #c9b8ff 40%, #8f7bff 100%);
+    box-shadow:inset 0 -6px 12px rgba(60,30,120,.35), 0 0 18px rgba(160,140,255,.25);
+  }
+  #eve .torso::after{
+    content:""; position:absolute; left:6px; top:5px; width:30px; height:22px; border-radius:8px;
+    background:linear-gradient(120deg, rgba(63,224,255,.55), rgba(122,92,255,.15));
+    mix-blend-mode:screen; opacity:.75;
+  }
+  #eve .jacket{
+    position:absolute; bottom:40px; left:50%; width:56px; height:36px; transform:translateX(-50%);
+    border-radius:12px 12px 5px 5px; border:1.5px solid rgba(63,224,255,.55);
+    background:linear-gradient(180deg, rgba(63,224,255,.16), rgba(122,92,255,.08));
+    box-shadow:0 0 16px rgba(63,224,255,.18);
+  }
+  #eve .choker{
+    position:absolute; bottom:72px; left:50%; width:16px; height:4px; transform:translateX(-50%);
+    border-radius:2px; background:#12102c; border:1px solid rgba(63,224,255,.6);
+  }
+  #eve .tri{
+    position:absolute; bottom:64px; left:50%; width:0; height:0; transform:translateX(-50%);
+    border-left:4px solid transparent; border-right:4px solid transparent; border-top:6px solid var(--cyan);
+    filter:drop-shadow(0 0 6px rgba(63,224,255,.9));
+  }
+  #eve .head{
+    position:absolute; bottom:76px; left:50%; width:34px; height:34px; transform:translateX(-50%);
+    border-radius:50%; background:radial-gradient(circle at 36% 30%, #ffe6d2, #f0bd97 74%);
+    box-shadow:inset -3px -3px 7px rgba(120,60,40,.2), 0 2px 6px rgba(0,0,0,.35); z-index:4;
+  }
+  #eve .head::before{
+    content:""; position:absolute; left:-4px; right:-4px; top:-5px; height:24px;
+    border-radius:18px 18px 48% 48%;
+    background:linear-gradient(140deg,var(--cyan),var(--violet) 70%,#b48cff);
+    box-shadow:0 0 16px rgba(63,224,255,.45);
+  }
+  #eve .head::after{
+    content:""; position:absolute; left:1px; top:9px; width:13px; height:9px;
+    border-radius:0 0 62% 30%; background:linear-gradient(140deg,var(--cyan),var(--violet));
+    transform:rotate(-10deg);
+  }
+  #eve .eye{top:17px} #eve .eye.l{left:9px} #eve .eye.r{right:9px}
+  #eve .mouth{top:24px; width:8px; border-color:rgba(36,26,61,.75)}
+  #eve .clip{
+    position:absolute; bottom:44px; right:4px; width:20px; height:24px; border-radius:3px;
+    background:linear-gradient(180deg,#f7f2ff,#c9b8ff); transform:rotate(9deg);
+    box-shadow:0 2px 8px rgba(0,0,0,.4); z-index:6;
+  }
+  #eve .clip::before{content:"";position:absolute;inset:3px 3px auto 3px;height:2px;background:rgba(90,70,140,.55);box-shadow:0 4px 0 rgba(90,70,140,.45),0 8px 0 rgba(90,70,140,.35)}
+  #eve .clip::after{content:"";position:absolute;left:50%;top:-5px;width:10px;height:6px;transform:translateX(-50%);border:1.6px solid #8a7ac0;border-bottom:0;border-radius:3px 3px 0 0}
+  #eve.active .clip{animation:clipBob 2s ease-in-out infinite}
+  #eve .spark{position:absolute; font-size:11px; opacity:0; color:var(--cyan); text-shadow:0 0 8px currentColor}
+  #eve.active .spark{animation:sparkle 2.6s linear infinite}
+  #eve .spark.s1{right:-2px; top:18px}
+  #eve .spark.s2{left:-4px; top:40px; animation-delay:.9s}
+  #eve .spark.s3{right:6px; top:64px; animation-delay:1.6s}
+
+  #eve .label{
+    position:absolute; left:50%; bottom:-16px; transform:translateX(-50%);
+    font-family:var(--mono); font-size:9px; letter-spacing:1.6px; color:var(--lav);
+    padding:2px 7px; border-radius:999px; background:rgba(12,8,30,.85);
+    border:1px solid rgba(140,120,255,.3); white-space:nowrap;
+  }
+  #eve.active .label{color:#06121a; background:linear-gradient(90deg,var(--cyan),var(--lav)); border-color:transparent; font-weight:700}
+
+  #eveBubble{
+    position:absolute; left:50%; bottom:calc(100% + 4px); transform:translateX(-50%) translateY(4px);
+    padding:5px 10px; border-radius:10px; white-space:nowrap;
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.6px;
+    background:linear-gradient(180deg, rgba(32,24,70,.97), rgba(16,11,38,.97));
+    border:1px solid rgba(140,120,255,.4); color:var(--lav);
+    opacity:0; transition:.3s; pointer-events:none;
+    box-shadow:0 8px 22px rgba(0,0,0,.5);
+  }
+  #eve.active #eveBubble{
+    opacity:1; transform:translateX(-50%) translateY(0);
+    border-color:rgba(63,224,255,.7); color:#EAFBFF;
+    box-shadow:0 8px 22px rgba(0,0,0,.5), 0 0 18px rgba(63,224,255,.3);
+  }
+  #eve.complete .label{background:linear-gradient(90deg,var(--mint),var(--cyan)); color:#04140f}
+
+  /* ─────────── panel task ─────────── */
+  #panel{
+    position:relative; z-index:20; flex:0 0 306px; width:306px; margin:0 12px 0 0;
+    display:flex; flex-direction:column; min-height:0;
+    background:linear-gradient(180deg, rgba(26,19,58,.9), rgba(12,9,28,.94));
+    border:1px solid var(--line); border-radius:14px; overflow:hidden;
+    box-shadow:0 10px 34px rgba(0,0,0,.45), inset 0 1px 0 rgba(200,180,255,.14);
+    backdrop-filter:blur(9px);
+    transition:transform .3s, opacity .3s;
+  }
+  #panel.hidden{display:none}
+  .ph{display:flex; align-items:center; gap:8px; padding:11px 13px; border-bottom:1px solid var(--line)}
+  .ph h2{margin:0; font-family:var(--mono); font-size:11px; letter-spacing:2.2px; color:var(--lav); text-transform:uppercase; font-weight:700}
+  .ph .n{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--dim)}
+  #list{overflow-y:auto; padding:8px; min-height:0; scrollbar-width:thin; scrollbar-color:rgba(120,100,220,.5) transparent}
+  #list::-webkit-scrollbar{width:7px}
+  #list::-webkit-scrollbar-thumb{background:rgba(120,100,220,.45); border-radius:4px}
+  .grp{margin-bottom:6px}
+  .grp h3{
+    display:flex; align-items:center; gap:6px; margin:8px 4px 5px;
+    font-family:var(--mono); font-size:9.5px; letter-spacing:1.8px; font-weight:700; text-transform:uppercase;
+  }
+  .grp.run h3{color:var(--cyan)} .grp.done h3{color:var(--mint)}
+  .grp.blk h3{color:var(--red)} .grp.wait h3{color:#8f85b8}
+  .grp h3 .line{flex:1;height:1px;background:currentColor;opacity:.18}
+  .row{
+    display:flex; gap:8px; padding:6px 8px; border-radius:8px; margin-bottom:3px;
+    background:rgba(10,8,24,.5); border:1px solid rgba(120,100,220,.14);
+    transition:.2s; cursor:default;
+  }
+  .row:hover{background:rgba(40,30,84,.6); border-color:rgba(120,100,220,.36)}
+  .row .bul{width:6px;height:6px;border-radius:50%;margin-top:4px;flex:0 0 auto}
+  .row.run .bul{background:var(--cyan); box-shadow:0 0 8px var(--cyan)}
+  .row.done .bul{background:var(--mint)}
+  .row.blk .bul{background:var(--red); box-shadow:0 0 8px var(--red); animation:blip 1.8s infinite}
+  .row.wait .bul{background:#5a5180}
+  .row .meta{min-width:0; flex:1}
+  .row .tid{font-family:var(--mono); font-size:10.5px; color:#DDD4FF; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .row .sub{font-size:10px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px}
+  .row.blk .sub{color:#ff9bb0}
+  .empty{padding:22px 14px; text-align:center; color:var(--dim); font-size:11.5px; line-height:1.6}
+
+  /* ─────────── overlay ─────────── */
+  #offline{
+    position:fixed; inset:0; z-index:90; display:none; place-items:center;
+    background:rgba(6,4,16,.72); backdrop-filter:blur(7px);
+  }
+  #offline.on{display:grid}
+  .ocard{
+    text-align:center; padding:26px 34px; border-radius:16px;
+    background:linear-gradient(180deg, rgba(46,12,26,.95), rgba(20,8,18,.97));
+    border:1px solid rgba(255,92,122,.45); box-shadow:0 20px 60px rgba(0,0,0,.6), 0 0 40px rgba(255,92,122,.12);
+  }
+  .ocard .big{font-size:26px; margin-bottom:8px}
+  .ocard h2{margin:0 0 6px; font-family:var(--mono); font-size:14px; letter-spacing:2px; color:#FF9BB0; text-transform:uppercase}
+  .ocard p{margin:0; font-size:12px; color:#C9B8C8; font-family:var(--mono)}
+  .spin{
+    margin:16px auto 0; width:26px; height:26px; border-radius:50%;
+    border:2px solid rgba(255,92,122,.25); border-top-color:var(--red); animation:spin 1s linear infinite;
+  }
+  #empty{
+    position:absolute; inset:0; display:none; place-items:center; z-index:40; pointer-events:none;
+  }
+  #empty.on{display:grid}
+  .ecard{
+    pointer-events:auto; text-align:center; padding:24px 30px; border-radius:16px; max-width:520px;
+    background:linear-gradient(180deg, rgba(26,20,60,.95), rgba(12,9,30,.97));
+    border:1px solid var(--line); box-shadow:0 20px 60px rgba(0,0,0,.55);
+  }
+  .ecard .big{font-size:30px;margin-bottom:6px}
+  .ecard h2{margin:0 0 8px; font-family:var(--mono); font-size:13px; letter-spacing:2px; color:var(--lav)}
+  .ecard p{margin:0; font-size:12.5px; color:var(--dim); line-height:1.6}
+  .ecard code{
+    display:inline-block; margin-top:10px; padding:6px 10px; border-radius:8px; font-family:var(--mono);
+    font-size:11px; color:var(--cyan); background:rgba(63,224,255,.08); border:1px solid rgba(63,224,255,.24);
+  }
+
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.6px)}}
+  @keyframes typel{0%,100%{transform:rotate(7deg)}50%{transform:rotate(-6deg) translateY(1px)}}
+  @keyframes typer{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(6deg) translateY(1px)}}
+  @keyframes blip{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes slip{from{background-position:0 0}to{background-position:28px 0}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes auraPulse{0%,100%{opacity:.55; transform:translateX(-50%) scale(.94)}50%{opacity:1; transform:translateX(-50%) scale(1.06)}}
+  @keyframes ringPulse{0%{opacity:.7; transform:translateX(-50%) scale(.7)}100%{opacity:0; transform:translateX(-50%) scale(1.18)}}
+  @keyframes clipBob{0%,100%{transform:rotate(9deg) translateY(0)}50%{transform:rotate(6deg) translateY(-2px)}}
+  @keyframes sparkle{0%{opacity:0; transform:translateY(6px) scale(.6)}25%{opacity:1}70%{opacity:.8}100%{opacity:0; transform:translateY(-14px) scale(1.1)}}
+  @keyframes screenPulse{0%,100%{opacity:.55}50%{opacity:1}}
+  .monitor.on .screen{animation:screenPulse 2.4s ease-in-out infinite}
+  .monitor.on .glow{opacity:.5; animation:screenPulse 2.4s ease-in-out infinite}
+  .monitor .glow{opacity:0; transition:opacity .4s}
+
+  @media (max-width:1180px){
+    #panel{position:absolute; right:8px; top:8px; bottom:8px; width:290px; flex:0 0 auto; margin:0; z-index:35}
+    #panel.hidden{display:none}
+  }
+  @media (max-width:720px){
+    .brand .pname{max-width:40vw; font-size:13px}
+    .counters .ctr{min-width:auto; padding:4px 7px; font-size:11px}
+    .ctr b{font-size:12px}
+    .clock{display:none}
+    .hud{gap:8px; padding:8px 12px; margin:8px 8px 0}
+    .bottom{margin:0 8px 8px}
+    .legend{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.001s !important; animation-iteration-count:1 !important}
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header class="hud">
+    <div class="brand">
+      <div class="logo"></div>
+      <div class="txt">
+        <div class="pname" id="pname">task office</div>
+        <div class="sub">opencode parallel loop</div>
+      </div>
+    </div>
+
+    <div class="chip layer" id="layerChip">Layer <b>—</b></div>
+    <div class="chip demo" id="demoChip" style="display:none">DEMO</div>
+
+    <div class="spacer"></div>
+
+    <div class="counters">
+      <div class="ctr run"><span class="dot live"></span><b id="cRun">0</b></div>
+      <div class="ctr done"><span class="dot"></span><b id="cDone">0</b></div>
+      <div class="ctr blk"><span class="dot"></span><b id="cBlk">0</b></div>
+    </div>
+
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="conn" id="conn"><span class="dot"></span><span id="connTxt">LIVE</span></div>
+    <button class="iconbtn" id="panelBtn" title="Ẩn/hiện danh sách task">☰ TASKS</button>
+  </header>
+
+  <div id="main">
+    <div id="stageWrap">
+      <div id="stage">
+        <svg id="iso" viewBox="0 0 1480 900" width="1480" height="900" aria-hidden="true">
+          <defs>
+            <linearGradient id="wallGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#241b52"/>
+              <stop offset="55%" stop-color="#191341"/>
+              <stop offset="100%" stop-color="#120e33"/>
+            </linearGradient>
+            <linearGradient id="wallGrad2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#1d1748"/>
+              <stop offset="100%" stop-color="#0f0b2a"/>
+            </linearGradient>
+            <linearGradient id="winGrad" x1="0" y1="0" x2="0.4" y2="1">
+              <stop offset="0%" stop-color="#1b3f7a"/>
+              <stop offset="45%" stop-color="#2a5ea8"/>
+              <stop offset="100%" stop-color="#123055"/>
+            </linearGradient>
+            <linearGradient id="screenGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#7ff3ff"/>
+              <stop offset="55%" stop-color="#3FE0FF"/>
+              <stop offset="100%" stop-color="#7A5CFF"/>
+            </linearGradient>
+            <radialGradient id="glowGrad">
+              <stop offset="0%" stop-color="#63e9ff" stop-opacity=".85"/>
+              <stop offset="100%" stop-color="#63e9ff" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="rugGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#2c2064"/>
+              <stop offset="100%" stop-color="#1d1548"/>
+            </radialGradient>
+          </defs>
+          <g id="scene"></g>
+        </svg>
+
+        <div id="chars"></div>
+        <div id="eveLayer"></div>
+
+        <div id="empty">
+          <div class="ecard">
+            <div class="big">🛰️</div>
+            <h2 id="emptyTitle">CHƯA THẤY PROJECT</h2>
+            <p id="emptyText">Không đọc được <code>.context/progress.json</code> trong repo này.</p>
+            <code id="emptyCmd">node server.mjs --demo</code>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside id="panel">
+      <div class="ph">
+        <h2>Task board</h2>
+        <span class="n" id="panelCount"></span>
+      </div>
+      <div id="list"></div>
+    </aside>
+  </div>
+
+  <footer class="bottom">
+    <div class="barrow">
+      <div class="barlabel">progress</div>
+      <div class="bar" id="bar">
+        <div class="seg done" id="segDone" style="width:0%"></div>
+        <div class="seg run" id="segRun" style="width:0%"></div>
+        <div class="seg blk" id="segBlk" style="width:0%"></div>
+        <div class="seg wait" id="segWait" style="width:100%"></div>
+      </div>
+      <div class="barpct" id="pct">0%</div>
+    </div>
+    <div class="legend">
+      <span><i class="sw" style="background:#5BE7C4"></i>done</span>
+      <span><i class="sw" style="background:#3FE0FF"></i>running (từ git worktree)</span>
+      <span><i class="sw" style="background:#FF5C7A"></i>blocked</span>
+      <span><i class="sw" style="background:rgba(120,105,180,.5)"></i>waiting</span>
+      <span style="margin-left:auto; opacity:.75" id="lastUp">last update —</span>
+    </div>
+  </footer>
+</div>
+
+<div id="offline">
+  <div class="ocard">
+    <div class="big">📡</div>
+    <h2>Mất kết nối</h2>
+    <p>Đang thử lại mỗi 3 giây…</p>
+    <div class="spin"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ── hình học isometric ────────────────────────────────────────────────
+  const TW = 118, TH = 59;         // tile width / height (2:1)
+  const ROOM_W = 11, ROOM_D = 9;
+  const WALL_H = 170;
+  const ORIGIN = { x: 700, y: 250 };
+  const DESK_W = 2.0, DESK_D = 0.9, DESK_H = 26;
+
+  const DESKS = [
+    { x: 1.25, y: 1.15 }, { x: 4.25, y: 1.15 }, { x: 7.25, y: 1.15 },
+    { x: 1.25, y: 3.65 }, { x: 4.25, y: 3.65 }, { x: 7.25, y: 3.65 },
+    { x: 1.25, y: 6.15 }, { x: 7.25, y: 6.15 }
+  ];
+  const EVE_POS = { x: 5.75, y: 7.55 };
+
+  const proj = (x, y) => ({
+    x: ORIGIN.x + (x - y) * (TW / 2),
+    y: ORIGIN.y + (x + y) * (TH / 2)
+  });
+  const P = (p) => p.x.toFixed(1) + ',' + p.y.toFixed(1);
+  const pts = (arr) => arr.map(P).join(' ');
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = (tag, attrs, parent) => {
+    const e = document.createElementNS(NS, tag);
+    if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  const up = (p, h) => ({ x: p.x, y: p.y - h });
+
+  // ── dựng scene tĩnh (1 lần) ───────────────────────────────────────────
+  const scene = document.getElementById('scene');
+  const deskEls = [];
+
+  function buildWalls() {
+    const g = svg('g', { id: 'walls' }, scene);
+
+    // tường trái (mặt x=0) — tối hơn
+    const l0 = proj(0, 0), l1 = proj(0, ROOM_D);
+    svg('polygon', {
+      points: pts([l0, l1, up(l1, WALL_H), up(l0, WALL_H)]),
+      fill: 'url(#wallGrad2)', stroke: 'rgba(120,100,220,.25)', 'stroke-width': 1.2
+    }, g);
+
+    // tường sau (mặt y=0)
+    const r0 = proj(0, 0), r1 = proj(ROOM_W, 0);
+    svg('polygon', {
+      points: pts([r0, r1, up(r1, WALL_H), up(r0, WALL_H)]),
+      fill: 'url(#wallGrad)', stroke: 'rgba(120,100,220,.25)', 'stroke-width': 1.2
+    }, g);
+
+    // dải neon dọc chân tường sau
+    svg('polygon', {
+      points: pts([up(r0, 10), up(r1, 10), up(r1, 109), up(r0, 109)]),
+      fill: 'none', stroke: 'rgba(63,224,255,.22)', 'stroke-width': 2
+    }, g);
+
+    // cửa sổ thành phố trên tường sau
+    const winDefs = [
+      { a: 1.1, b: 3.3, bot: 44, top: 128 },
+      { a: 4.0, b: 6.2, bot: 44, top: 128 },
+      { a: 6.9, b: 9.5, bot: 44, top: 118 }
+    ];
+    for (const w of winDefs) {
+      const p1 = up(proj(w.a, 0), w.bot), p2 = up(proj(w.b, 0), w.bot);
+      const p3 = up(proj(w.b, 0), w.top), p4 = up(proj(w.a, 0), w.top);
+      svg('polygon', {
+        points: pts([p1, p2, p3, p4]), fill: 'url(#winGrad)',
+        stroke: 'rgba(140,200,255,.5)', 'stroke-width': 1.4
+      }, g);
+      // vài ô sáng
+      for (let i = 0; i < 5; i++) {
+        const f = i / 5 + 0.04;
+        const q1 = {
+          x: p1.x + (p2.x - p1.x) * f + (p4.x - p1.x) * (0.15 + 0.14 * (i % 3)),
+          y: p1.y + (p2.y - p1.y) * f + (p4.y - p1.y) * (0.15 + 0.14 * (i % 3))
+        };
+        svg('rect', {
+          x: q1.x - 3, y: q1.y - 9, width: 6, height: 7,
+          fill: i % 2 ? 'rgba(63,224,255,.55)' : 'rgba(200,180,255,.4)'
+        }, g);
+      }
+      // nan cửa
+      svg('line', {
+        x1: (p1.x + p2.x) / 2, y1: (p1.y + p2.y) / 2,
+        x2: (p4.x + p3.x) / 2, y2: (p4.y + p3.y) / 2,
+        stroke: 'rgba(160,200,255,.35)', 'stroke-width': 1.2
+      }, g);
+    }
+
+    // tường trái: 1 cửa sổ nhỏ
+    const q1 = up(proj(0, 2.2), 60), q2 = up(proj(0, 4.6), 60);
+    svg('polygon', {
+      points: pts([q1, q2, up(proj(0, 4.6), 120), up(proj(0, 2.2), 120)]),
+      fill: 'url(#winGrad)', 'fill-opacity': .55, stroke: 'rgba(140,200,255,.35)', 'stroke-width': 1.2
+    }, g);
+
+    // viền trên 2 tường
+    svg('polyline', {
+      points: pts([up(proj(0, ROOM_D), WALL_H), up(proj(0, 0), WALL_H), up(proj(ROOM_W, 0), WALL_H)]),
+      fill: 'none', stroke: 'rgba(63,224,255,.4)', 'stroke-width': 2
+    }, g);
+  }
+
+  function buildFloor() {
+    const g = svg('g', { id: 'floor' }, scene);
+    for (let x = 0; x < ROOM_W; x++) {
+      for (let y = 0; y < ROOM_D; y++) {
+        const a = proj(x, y), b = proj(x + 1, y), c = proj(x + 1, y + 1), d = proj(x, y + 1);
+        svg('polygon', {
+          points: pts([a, b, c, d]),
+          fill: (x + y) % 2 ? '#191436' : '#1e1940',
+          stroke: 'rgba(110,90,190,.16)', 'stroke-width': 1
+        }, g);
+      }
+    }
+    // viền sàn
+    svg('polygon', {
+      points: pts([proj(0, 0), proj(ROOM_W, 0), proj(ROOM_W, ROOM_D), proj(0, ROOM_D)]),
+      fill: 'none', stroke: 'rgba(63,224,255,.28)', 'stroke-width': 2
+    }, g);
+
+    // thảm dưới Eve
+    const rc = proj(EVE_POS.x, EVE_POS.y - 0.5);
+    svg('ellipse', {
+      cx: rc.x, cy: rc.y, rx: 132, ry: 58, fill: 'url(#rugGrad)',
+      stroke: 'rgba(122,92,255,.4)', 'stroke-width': 1.6
+    }, g);
+    svg('ellipse', {
+      cx: rc.x, cy: rc.y, rx: 112, ry: 47, fill: 'none',
+      stroke: 'rgba(63,224,255,.16)', 'stroke-width': 1
+    }, g);
+  }
+
+  function isoBox(gx, gy, w, d, h, col, parent) {
+    const A = proj(gx, gy), B = proj(gx + w, gy), C = proj(gx + w, gy + d), D = proj(gx, gy + d);
+    svg('polygon', {
+      points: pts([D, C, up(C, h), up(D, h)]), fill: col.left,
+      stroke: col.edge, 'stroke-width': 1
+    }, parent);
+    svg('polygon', {
+      points: pts([C, B, up(B, h), up(C, h)]), fill: col.right,
+      stroke: col.edge, 'stroke-width': 1
+    }, parent);
+    svg('polygon', {
+      points: pts([up(A, h), up(B, h), up(C, h), up(D, h)]),
+      fill: col.top, stroke: col.edge, 'stroke-width': 1.2
+    }, parent);
+    return { A, B, C, D };
+  }
+
+  function buildDesks() {
+    const order = DESKS.map((d, i) => ({ d, i })).sort((a, b) => (a.d.y + a.d.x) - (b.d.y + b.d.x));
+    for (const { d, i } of order) {
+      const g = svg('g', { 'data-desk': i }, scene);
+
+      // ghế phía sau
+      const cg = svg('g', {}, g);
+      isoBox(d.x + 0.62, d.y - 0.62, 0.62, 0.55, 12, {
+        top: '#241d4a', left: '#150f30', right: '#1b1539', edge: 'rgba(120,100,220,.28)'
+      }, cg);
+      const cp = proj(d.x + 1.24, d.y - 0.42);
+      svg('rect', {
+        x: cp.x - 13, y: cp.y - 40, width: 26, height: 28, rx: 5,
+        fill: '#221b46', stroke: 'rgba(120,100,220,.3)', 'stroke-width': 1
+      }, cg);
+
+      // thân bàn
+      isoBox(d.x, d.y, DESK_W, DESK_D, DESK_H, {
+        top: '#2e2757', left: '#1a1438', right: '#221b48', edge: 'rgba(120,200,255,.32)'
+      }, g);
+
+      // viền neon mặt bàn (2 cạnh trước)
+      const A = proj(d.x, d.y), B = proj(d.x + DESK_W, d.y);
+      const C = proj(d.x + DESK_W, d.y + DESK_D), D = proj(d.x, d.y + DESK_D);
+      svg('polyline', {
+        points: pts([up(D, DESK_H), up(C, DESK_H), up(B, DESK_H)]),
+        fill: 'none', stroke: 'rgba(63,224,255,.5)', 'stroke-width': 1.6
+      }, g);
+
+      // màn hình
+      const mp = proj(d.x + DESK_W * 0.62, d.y + DESK_D * 0.2);
+      const mg = svg('g', { class: 'monitor', transform: `translate(${mp.x},${mp.y - DESK_H})` }, g);
+      svg('ellipse', { class: 'glow', cx: 0, cy: -22, rx: 46, ry: 34, fill: 'url(#glowGrad)' }, mg);
+      svg('rect', { x: -19, y: -41, width: 38, height: 27, rx: 2.5, fill: '#0c0a1e', stroke: '#4a3f7a', 'stroke-width': 1.4 }, mg);
+      svg('rect', { class: 'screen', x: -15.5, y: -37.5, width: 31, height: 20, rx: 1.5, fill: 'url(#screenGrad)', opacity: .55 }, mg);
+      // code lines trên màn hình
+      svg('rect', { x: -12, y: -34, width: 12, height: 1.6, rx: .8, fill: 'rgba(6,10,26,.6)' }, mg);
+      svg('rect', { x: -12, y: -30, width: 18, height: 1.6, rx: .8, fill: 'rgba(6,10,26,.5)' }, mg);
+      svg('rect', { x: -12, y: -26, width: 9, height: 1.6, rx: .8, fill: 'rgba(6,10,26,.5)' }, mg);
+      svg('rect', { x: -3, y: -14, width: 6, height: 8, fill: '#3a3360' }, mg);
+      svg('rect', { x: -11, y: -6.5, width: 22, height: 3.5, rx: 1.6, fill: '#3a3360' }, mg);
+
+      // bàn phím
+      svg('polygon', {
+        points: pts([
+          { x: mp.x - 24, y: mp.y - DESK_H + 12 },
+          { x: mp.x + 10, y: mp.y - DESK_H + 12 },
+          { x: mp.x + 18, y: mp.y - DESK_H + 22 },
+          { x: mp.x - 16, y: mp.y - DESK_H + 22 }
+        ]),
+        fill: '#171132', stroke: 'rgba(120,100,220,.3)', 'stroke-width': 1
+      }, g);
+
+      // cốc + giấy (trang trí)
+      const cup = proj(d.x + 0.32, d.y + 0.62);
+      svg('rect', { x: cup.x - 4, y: cup.y - DESK_H - 8, width: 8, height: 9, rx: 2, fill: '#3FE0FF', opacity: .55 }, g);
+      const paper = proj(d.x + 1.55, d.y + 0.66);
+      svg('rect', { x: paper.x - 7, y: paper.y - DESK_H - 4, width: 14, height: 5, rx: 1, fill: '#C9B8FF', opacity: .3, transform: `rotate(-8 ${paper.x} ${paper.y - DESK_H})` }, g);
+
+      // cây cảnh ở 2 bàn
+      if (i === 0 || i === 5) {
+        const pl = proj(d.x + 1.82, d.y + 0.08);
+        svg('rect', { x: pl.x - 5, y: pl.y - DESK_H - 9, width: 10, height: 9, rx: 2, fill: '#3b2f6b' }, g);
+        svg('ellipse', { cx: pl.x, cy: pl.y - DESK_H - 18, rx: 9, ry: 8, fill: '#2f8f79' }, g);
+        svg('ellipse', { cx: pl.x - 5, cy: pl.y - DESK_H - 14, rx: 6, ry: 5, fill: '#3fb595' }, g);
+        svg('ellipse', { cx: pl.x + 5, cy: pl.y - DESK_H - 22, rx: 5, ry: 4.5, fill: '#37a184' }, g);
+      }
+
+      deskEls[i] = { group: g, monitor: mg };
+    }
+  }
+
+  buildWalls();
+  buildFloor();
+  buildDesks();
+
+  // ── Eve ───────────────────────────────────────────────────────────────
+  const eveLayer = document.getElementById('eveLayer');
+  const evePos = proj(EVE_POS.x, EVE_POS.y);
+  eveLayer.innerHTML = `
+    <div id="eve" data-desk="eve" style="left:${evePos.x}px;top:${evePos.y}px">
+      <div id="eveBubble">☕ idle</div>
+      <div class="aura"></div>
+      <div class="ring"></div>
+      <div class="spark s1">✦</div>
+      <div class="spark s2">✧</div>
+      <div class="spark s3">✦</div>
+      <div class="body">
+        <div class="leg l"></div><div class="leg r"></div>
+        <div class="shoe l"></div><div class="shoe r"></div>
+        <div class="skirt"></div>
+        <div class="torso"></div>
+        <div class="jacket"></div>
+        <div class="choker"></div>
+        <div class="tri"></div>
+        <div class="clip"></div>
+        <div class="head">
+          <i class="eye l"></i><i class="eye r"></i>
+          <i class="mouth"></i>
+        </div>
+      </div>
+      <div class="label">EVE · MERGER</div>
+    </div>`;
+  const eve = document.getElementById('eve');
+  const eveBubble = document.getElementById('eveBubble');
+
+  // ── nhân vật builder ──────────────────────────────────────────────────
+  const chars = document.getElementById('chars');
+  const charEls = new Map();
+
+  const SHIRTS = [
+    ['#2f7bff', '#173c8f'], ['#7A5CFF', '#3b2a8f'], ['#1fb6c9', '#0e5e77'],
+    ['#ff7b9c', '#a8324f'], ['#5BE7C4', '#1f7f68'], ['#ffb45c', '#a35f16'],
+    ['#b07bff', '#5d34a3'], ['#4fc3ff', '#1c6a9e']
+  ];
+
+  function createChar(task, idx) {
+    const el = document.createElement('div');
+    el.className = 'chr';
+    el.dataset.id = task.id;
+    const s = SHIRTS[idx % SHIRTS.length];
+    const hue = (idx * 47) % 360;
+    el.innerHTML = `
+      <div class="bubble">
+        <span class="tid"></span>
+        <span class="who"></span>
+      </div>
+      <div class="tip"><b>BLOCKED</b><span class="why"></span></div>
+      <div class="bob">
+        <div class="sprite" style="--shirt:${s[0]};--shirt2:${s[1]};--h1:hsl(${hue} 90% 68%);--h2:hsl(${(hue + 40) % 360} 80% 55%)">
+          <div class="arm l"></div>
+          <div class="arm r"></div>
+          <div class="torso"></div>
+          <div class="head">
+            <i class="eye l"></i><i class="eye r"></i><i class="mouth"></i>
+          </div>
+          <div class="badge"></div>
+        </div>
+      </div>`;
+    return el;
+  }
+
+  function deskPoint(i) {
+    const d = DESKS[i];
+    const c = proj(d.x + DESK_W / 2, d.y + DESK_D / 2);
+    return { x: c.x, y: c.y - DESK_H - 4 };
+  }
+
+  // ── render ────────────────────────────────────────────────────────────
+  const $ = (id) => document.getElementById(id);
+  const ORDER = { running: 0, blocked: 1, done: 2, waiting: 3 };
+  let lastUpdatedShown = '';
+
+  function render(state) {
+    const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+    const counts = state.counts || {};
+
+    // HUD
+    $('pname').textContent = state.projectName || '—';
+    document.title = `${state.projectName || 'task office'} — opencode loop`;
+
+    const totalLayers = Number(state.totalLayers) || 0;
+    const curLayer = Number(state.currentLayer) || 0;
+    $('layerChip').innerHTML = totalLayers > 0
+      ? `Layer <b>${Math.min(curLayer + 1, totalLayers)}</b>/${totalLayers}`
+      : `Layer <b>—</b>`;
+
+    $('demoChip').style.display = state.mode === 'demo' ? '' : 'none';
+    $('cRun').textContent = counts.running ?? 0;
+    $('cDone').textContent = counts.done ?? 0;
+    $('cBlk').textContent = counts.blocked ?? 0;
+
+    // progress
+    const total = Math.max(counts.total || 0, (counts.done || 0));
+    const pc = (n) => total > 0 ? ((n || 0) / total) * 100 : 0;
+    $('segDone').style.width = pc(counts.done) + '%';
+    $('segRun').style.width = pc(counts.running) + '%';
+    $('segBlk').style.width = pc(counts.blocked) + '%';
+    $('segWait').style.width = Math.max(0, 100 - pc(counts.done) - pc(counts.running) - pc(counts.blocked)) + '%';
+    const pctDone = total > 0 ? Math.round(((counts.done || 0) / total) * 100) : 0;
+    $('pct').textContent = pctDone + '%';
+
+    if (state.lastUpdated) {
+      const d = new Date(state.lastUpdated);
+      const txt = isNaN(d) ? String(state.lastUpdated) : d.toLocaleTimeString('vi-VN', { hour12: false });
+      if (txt !== lastUpdatedShown) {
+        lastUpdatedShown = txt;
+        $('lastUp').textContent = 'last update ' + txt;
+      }
+    }
+
+    // empty state
+    const isEmpty = state.mode === 'no-project' || state.ok === false;
+    $('empty').classList.toggle('on', isEmpty);
+    if (isEmpty) {
+      $('emptyTitle').textContent = 'CHƯA THẤY PROJECT';
+      $('emptyText').textContent = state.error
+        ? state.error
+        : 'Không đọc được .context/progress.json trong repo này.';
+      $('emptyCmd').textContent = 'node server.mjs --repo <path-to-project>';
+    }
+
+    // chọn task lên sân khấu
+    const onStage = [...tasks]
+      .sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) || String(a.id).localeCompare(String(b.id)))
+      .slice(0, DESKS.length);
+
+    const keep = new Set();
+
+    onStage.forEach((t, i) => {
+      const pt = deskPoint(i);
+      let el = charEls.get(t.id);
+      if (!el) {
+        el = createChar(t, i);
+        chars.appendChild(el);
+        charEls.set(t.id, el);
+        el.style.left = pt.x + 'px';
+        el.style.top = pt.y + 'px';
+        // enter
+        requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+      }
+      el.style.left = pt.x + 'px';
+      el.style.top = pt.y + 'px';
+      el.style.zIndex = String(20 + Math.round((DESKS[i].x + DESKS[i].y) * 4));
+      el.classList.remove('running', 'done', 'blocked', 'waiting', 'stale');
+      el.classList.add(t.status || 'waiting');
+      if (t.stale) el.classList.add('stale');
+
+      const tid = el.querySelector('.tid');
+      const who = el.querySelector('.who');
+      const why = el.querySelector('.why');
+      const badge = el.querySelector('.badge');
+
+      tid.textContent = t.id;
+      if (t.status === 'running') {
+        who.textContent = (t.agent || 'builder') + (t.stale ? ' · im lặng' : ' · đang code');
+        badge.textContent = '';
+        badge.style.display = 'none';
+      } else if (t.status === 'done') {
+        who.textContent = '✅ merged';
+        badge.style.display = '';
+        badge.textContent = '✅';
+      } else if (t.status === 'blocked') {
+        who.textContent = '🔴 blocked';
+        badge.style.display = '';
+        badge.textContent = '!';
+        why.textContent = t.reason || 'không rõ lý do';
+      } else {
+        who.textContent = 'chờ';
+        badge.style.display = 'none';
+      }
+      keep.add(t.id);
+    });
+
+    // remove
+    for (const [id, el] of [...charEls.entries()]) {
+      if (!keep.has(id)) {
+        el.classList.add('out');
+        el.classList.remove('in');
+        charEls.delete(id);
+        setTimeout(() => el.remove(), 460);
+      }
+    }
+
+    // đèn màn hình theo bàn
+    DESKS.forEach((d, i) => {
+      const t = onStage[i];
+      const m = deskEls[i] && deskEls[i].monitor;
+      if (!m) return;
+      m.classList.toggle('on', !!t && (t.status === 'running' || t.status === 'done'));
+    });
+
+    // Eve
+    const merging = state.phase === 'merging' || !!(state.merger && state.merger.active);
+    const complete = state.phase === 'complete';
+    eve.classList.toggle('active', !!merging);
+    eve.classList.toggle('complete', !!complete);
+    if (merging) {
+      eveBubble.textContent = `⚡ MERGE · layer-${curLayer}`;
+    } else if (complete) {
+      eveBubble.textContent = '🎉 ship it!';
+    } else if ((counts.running || 0) > 0) {
+      eveBubble.textContent = '☕ đứng canh';
+    } else {
+      eveBubble.textContent = '☕ idle';
+    }
+    eve.classList.toggle('active', !!merging || !!complete);
+
+    renderPanel(tasks, counts);
+  }
+
+  // ── panel ─────────────────────────────────────────────────────────────
+  const listEl = $('list');
+  let panelScroll = 0;
+
+  function renderPanel(tasks, counts) {
+    panelScroll = listEl.scrollTop;
+    $('panelCount').textContent = `${tasks.length} task · ${(counts.running || 0)} running`;
+    if (!tasks.length) {
+      listEl.innerHTML = `<div class="empty">Chưa có task nào.<br>Chạy loop hoặc mở <b>--demo</b> để xem thử.</div>`;
+      return;
+    }
+    const groups = [
+      ['run', 'running', '▶'],
+      ['blk', 'blocked', '■'],
+      ['done', 'done', '✓'],
+      ['wait', 'waiting', '·']
+    ];
+    let html = '';
+    for (const [cls, status, icon] of groups) {
+      const items = tasks.filter((t) => t.status === status);
+      if (!items.length) continue;
+      html += `<div class="grp ${cls}"><h3>${icon} ${status} <span class="n" style="opacity:.6">${items.length}</span><span class="line"></span></h3>`;
+      for (const t of items) {
+        const sub = status === 'blocked'
+          ? (t.reason || 'không rõ lý do')
+          : status === 'running'
+            ? `${t.agent || 'builder'} · ${t.activeAgoSec != null ? ago(t.activeAgoSec) : 'đang chạy'}${t.worktree ? ' · ' + t.worktree : ''}`
+            : status === 'done'
+              ? (t.title || 'đã merge')
+              : (t.title || 'chưa bắt đầu');
+        html += `<div class="row ${cls}" title="${esc(t.id)}">
+          <span class="bul"></span>
+          <span class="meta">
+            <span class="tid">${esc(t.id)}</span>
+            <span class="sub">${esc(sub)}</span>
+          </span>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+    listEl.innerHTML = html;
+    listEl.scrollTop = panelScroll;
+  }
+
+  function ago(sec) {
+    if (sec == null) return '—';
+    if (sec < 20) return 'vừa xong';
+    if (sec < 90) return `${sec}s trước`;
+    if (sec < 3600) return `${Math.round(sec / 60)}m trước`;
+    return `${Math.round(sec / 3600)}h trước`;
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  // ── clock ─────────────────────────────────────────────────────────────
+  function tickClock() {
+    const d = new Date();
+    $('clock').textContent = d.toLocaleTimeString('vi-VN', { hour12: false });
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  // ── kết nối ───────────────────────────────────────────────────────────
+  let fails = 0;
+  let lastState = null;
+  const conn = $('conn');
+  const connTxt = $('connTxt');
+
+  function setOnline(ok) {
+    conn.classList.toggle('off', !ok);
+    connTxt.textContent = ok ? 'LIVE' : 'OFFLINE';
+    $('offline').classList.toggle('on', !ok);
+  }
+
+  async function poll() {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3200);
+    try {
+      const res = await fetch('/api/state', { signal: ctrl.signal, cache: 'no-store' });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const state = await res.json();
+      fails = 0;
+      setOnline(true);
+      lastState = state;
+      render(state);
+    } catch (e) {
+      clearTimeout(timer);
+      fails++;
+      if (fails >= 2) setOnline(false);
+      if (lastState && fails === 1) {
+        // giữ nguyên cảnh cũ, chỉ nháy nhẹ
+        conn.classList.add('off');
+        connTxt.textContent = 'RETRY';
+      }
+    } finally {
+      setTimeout(poll, 3000);
+    }
+  }
+
+  // scale scene
+  function fit() {
+    const wrap = document.getElementById('stageWrap');
+    const w = wrap.clientWidth || window.innerWidth;
+    const h = wrap.clientHeight || window.innerHeight;
+    let k = Math.min(w / 1520, h / 930);
+    k = Math.max(0.3, Math.min(1.08, k));
+    document.getElementById('stage').style.setProperty('--k', k.toFixed(4));
+  }
+  window.addEventListener('resize', fit);
+  fit();
+
+  // nút panel
+  const panel = $('panel');
+  const panelBtn = $('panelBtn');
+  if (window.matchMedia('(max-width:1180px)').matches) panel.classList.add('hidden');
+  panelBtn.addEventListener('click', () => panel.classList.toggle('hidden'));
+
+  // bụi sáng nền
+  (function dust() {
+    const n = 14;
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement('div');
+      const s = 1 + Math.random() * 2.4;
+      d.style.cssText = `position:fixed;left:${Math.random() * 100}vw;top:${Math.random() * 100}vh;width:${s}px;height:${s}px;border-radius:50%;background:${Math.random() > .5 ? 'rgba(63,224,255,.55)' : 'rgba(180,140,255,.5)'};box-shadow:0 0 ${4 + s * 3}px currentColor;pointer-events:none;z-index:1;opacity:${.15 + Math.random() * .35};animation:float ${9 + Math.random() * 10}s ease-in-out ${Math.random() * 6}s infinite;`;
+      document.body.appendChild(d);
+    }
+    const st = document.createElement('style');
+    st.textContent = '@keyframes float{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(12px,-26px,0)}}';
+    document.head.appendChild(st);
+  })();
+
+  poll();
+})();
+</script>
+</body>
+</html>
