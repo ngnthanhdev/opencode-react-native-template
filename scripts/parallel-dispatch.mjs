@@ -80,21 +80,45 @@ function parseArgs(argv) {
 function taskSlug(taskId) { return taskId.replace(/[\/]/g, '__') }
 function branchName(taskId) { return `wt/${taskSlug(taskId)}` }
 function worktreePath(taskId) { return path.join(ROOT, '.worktrees', taskSlug(taskId)) }
-function integrationBranch(layer) { return `layer-${layer}-integration` }
+// integration branch:
+//   initial build:  layer-<N>-integration
+//   change (bug/feature): <scope>-phase-<N>-integration   (scope = feature-x / bug-y)
+function integrationBranch(unit) { return `${unit}-integration` }
 
-// ── tìm task files của 1 layer ──────────────────────────────────────────────
-function findLayerTasks(layer) {
+// Phân giải unit làm việc từ args:
+//   --layer N                                   → initial build, unit = "layer-N"
+//   --scope <feature|bug>-<slug> --phase N      → change,        unit = "<scope>-phase-N"
+function resolveUnit(args) {
+  if (args.scope && args.scope !== true) {
+    const phase = args.phase
+    if (phase === undefined || phase === true) die('change mode cần cả --scope <feature|bug>-<slug> VÀ --phase <N>')
+    return { unit: `${args.scope}-phase-${phase}`, kind: 'change', scope: args.scope, phase: String(phase),
+             dirName: args.scope, prefix: `phase-${phase}-task-` }
+  }
+  const layer = args.layer
+  if (layer === undefined || layer === true) die('cần --layer <N> (initial build) HOẶC --scope <feature|bug>-<slug> --phase <N> (change)')
+  return { unit: `layer-${layer}`, kind: 'build', layer: String(layer),
+           dirName: null, prefix: `layer-${layer}-task-` }
+}
+
+// ── tìm task files của 1 unit (layer hoặc phase) ────────────────────────────
+function findUnitTasks(u) {
   const tasksRoot = path.join(ROOT, 'tasks')
   if (!fs.existsSync(tasksRoot)) return []
   const results = []
-  const prefix = `layer-${layer}-task-`
-  for (const slug of fs.readdirSync(tasksRoot)) {
+  // change: chỉ quét đúng thư mục tasks/<scope>/ ; build: quét mọi thư mục slug
+  const slugs = u.dirName ? [u.dirName] : fs.readdirSync(tasksRoot)
+  for (const slug of slugs) {
     const dir = path.join(tasksRoot, slug)
-    if (!fs.statSync(dir).isDirectory()) continue
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue
     for (const f of fs.readdirSync(dir)) {
-      if (f.startsWith(prefix) && f.endsWith('.md')) {
+      if (f.startsWith(u.prefix) && f.endsWith('.md')) {
         const m = f.match(/task-(\d+)/)
-        results.push({ id: `layer-${layer}/task-${m ? m[1] : '??'}`, file: path.join(dir, f), slug })
+        const tnum = m ? m[1] : '??'
+        const id = u.kind === 'change'
+          ? `${u.scope}/phase-${u.phase}/task-${tnum}`
+          : `layer-${u.layer}/task-${tnum}`
+        results.push({ id, file: path.join(dir, f), slug })
       }
     }
   }
@@ -115,8 +139,8 @@ function filesOfTask(taskFile) {
 }
 
 // Chia task thành các "wave" chạy song song: task trùng file KHÔNG cùng wave.
-function planWaves(layer) {
-  const tasks = findLayerTasks(layer)
+function planWaves(u) {
+  const tasks = findUnitTasks(u)
   const waves = []
   const remaining = tasks.map(t => ({ ...t, files: filesOfTask(t.file) }))
   while (remaining.length) {
@@ -137,37 +161,49 @@ function planWaves(layer) {
 
 // ── commands ────────────────────────────────────────────────────────────────
 function cmdPlan(args) {
-  const layer = args.layer
-  if (layer === undefined || layer === true) die('cần --layer <N>')
-  const waves = planWaves(layer)
-  console.log(JSON.stringify({ layer: Number(layer), integrationBranch: integrationBranch(layer), waves }, null, 2))
+  const u = resolveUnit(args)
+  const waves = planWaves(u)
+  console.log(JSON.stringify({ unit: u.unit, kind: u.kind, integrationBranch: integrationBranch(u.unit), waves }, null, 2))
 }
+
+// unit từ taskId:
+//   "layer-1/task-03"              → "layer-1"
+//   "feature-x/phase-1/task-03"    → "feature-x-phase-1"
+function unitOfTaskId(taskId) {
+  const mb = taskId.match(/^(layer-\d+)\//)
+  if (mb) return mb[1]
+  const mc = taskId.match(/^(.+?)\/phase-(\d+)\//)
+  if (mc) return `${mc[1]}-phase-${mc[2]}`
+  die(`taskId không hợp lệ: ${taskId} (dạng "layer-N/task-NN" hoặc "<scope>/phase-N/task-NN")`)
+}
+// unit → prefix branch/worktree để lọc khi merge/cleanup
+function unitBranchPrefix(unit) { return `wt/${unit.replace(/[\/]/g, '__')}__` }
 
 function cmdSetup(args) {
   const taskId = args.task
-  if (!taskId || taskId === true) die('cần --task <layer-N/task-NN>')
-  const layer = taskId.match(/layer-(\d+)/)?.[1]
-  const base = args.base && args.base !== true ? args.base : currentOrIntegration(layer)
+  if (!taskId || taskId === true) die('cần --task <layer-N/task-NN> hoặc <scope>/phase-N/task-NN')
+  const unit = unitOfTaskId(taskId)
+  const base = args.base && args.base !== true ? args.base : currentOrIntegration()
 
-  // đảm bảo integration branch tồn tại
-  ensureIntegrationBranch(layer, base)
+  // đảm bảo integration branch của unit tồn tại
+  ensureIntegrationBranch(unit, base)
 
   const wt = worktreePath(taskId)
   const br = branchName(taskId)
   if (fs.existsSync(wt)) die(`worktree đã tồn tại: ${path.relative(ROOT, wt)} (chạy cleanup trước nếu muốn làm lại)`)
 
   fs.mkdirSync(path.join(ROOT, '.worktrees'), { recursive: true })
-  const r = shTry('git', ['worktree', 'add', '-b', br, wt, integrationBranch(layer)])
+  const r = shTry('git', ['worktree', 'add', '-b', br, wt, integrationBranch(unit)])
   if (!r.ok) die(`tạo worktree lỗi: ${r.err}`)
-  console.log(JSON.stringify({ task: taskId, worktree: path.relative(ROOT, wt), branch: br, base: integrationBranch(layer) }, null, 2))
+  console.log(JSON.stringify({ task: taskId, unit, worktree: path.relative(ROOT, wt), branch: br, base: integrationBranch(unit) }, null, 2))
 }
 
-function currentOrIntegration(layer) {
+function currentOrIntegration() {
   const r = shTry('git', ['rev-parse', '--abbrev-ref', 'HEAD'])
   return r.ok ? r.out : 'HEAD'
 }
-function ensureIntegrationBranch(layer, base) {
-  const ib = integrationBranch(layer)
+function ensureIntegrationBranch(unit, base) {
+  const ib = integrationBranch(unit)
   const exists = shTry('git', ['show-ref', '--verify', '--quiet', `refs/heads/${ib}`]).ok
   if (!exists) {
     const r = shTry('git', ['branch', ib, base])
@@ -176,9 +212,8 @@ function ensureIntegrationBranch(layer, base) {
 }
 
 function cmdMerge(args) {
-  const layer = args.layer
-  if (layer === undefined || layer === true) die('cần --layer <N>')
-  const ib = integrationBranch(layer)
+  const u = resolveUnit(args)
+  const ib = integrationBranch(u.unit)
   if (!shTry('git', ['show-ref', '--verify', '--quiet', `refs/heads/${ib}`]).ok)
     die(`chưa có integration branch ${ib} — chạy setup trước`)
 
@@ -186,16 +221,17 @@ function cmdMerge(args) {
   const co = shTry('git', ['checkout', ib])
   if (!co.ok) die(`checkout ${ib} lỗi: ${co.err}`)
 
-  // tìm mọi branch wt/layer-N__*
+  // tìm mọi branch wt/<unit>__*
+  const prefix = unitBranchPrefix(u.unit)
   const branches = shTry('git', ['for-each-ref', '--format=%(refname:short)', 'refs/heads/wt/'])
     .out.split('\n').map(s => s.trim()).filter(Boolean)
-    .filter(b => b.startsWith(`wt/layer-${layer}__`))
+    .filter(b => b.startsWith(prefix))
 
-  if (!branches.length) { console.log(JSON.stringify({ layer: Number(layer), merged: [], note: 'không có branch task nào để merge' })); return }
+  if (!branches.length) { console.log(JSON.stringify({ unit: u.unit, merged: [], note: 'không có branch task nào để merge' })); return }
 
   const merged = []
   for (const b of branches) {
-    const r = shTry('git', ['merge', '--no-ff', '-m', `merge(${b}): layer-${layer} parallel task`, b])
+    const r = shTry('git', ['merge', '--no-ff', '-m', `merge(${b}): ${u.unit} parallel task`, b])
     if (!r.ok) {
       shTry('git', ['merge', '--abort'])
       die(`CONFLICT khi merge ${b} — DỪNG. Task này cần xử lý thủ công/tuần tự. Chi tiết:\n${r.err || r.out}`)
@@ -203,7 +239,7 @@ function cmdMerge(args) {
     merged.push(b)
   }
 
-  const result = { layer: Number(layer), integrationBranch: ib, merged }
+  const result = { unit: u.unit, kind: u.kind, integrationBranch: ib, merged }
 
   if (args['no-verify']) { console.log(JSON.stringify(result, null, 2)); return }
 
@@ -213,22 +249,23 @@ function cmdMerge(args) {
 }
 
 function cmdCleanup(args) {
-  const layer = args.layer
-  if (layer === undefined || layer === true) die('cần --layer <N>')
+  const u = resolveUnit(args)
+  const wtDirPart = `.worktrees/${u.unit.replace(/[\/]/g, '__')}__`
   const removed = []
   // xoá worktree
   const list = shTry('git', ['worktree', 'list', '--porcelain']).out
   for (const block of list.split('\n\n')) {
     const p = block.split('\n').find(l => l.startsWith('worktree '))?.slice(9)
-    if (p && p.includes(`.worktrees/layer-${layer}__`)) {
+    if (p && p.includes(wtDirPart)) {
       shTry('git', ['worktree', 'remove', '--force', p]); removed.push(path.relative(ROOT, p))
     }
   }
-  // xoá branch wt/layer-N__*
+  // xoá branch wt/<unit>__*
+  const prefix = unitBranchPrefix(u.unit)
   const branches = shTry('git', ['for-each-ref', '--format=%(refname:short)', 'refs/heads/wt/'])
-    .out.split('\n').map(s => s.trim()).filter(b => b.startsWith(`wt/layer-${layer}__`))
+    .out.split('\n').map(s => s.trim()).filter(b => b.startsWith(prefix))
   for (const b of branches) { shTry('git', ['branch', '-D', b]); removed.push(b) }
-  console.log(JSON.stringify({ layer: Number(layer), removed }, null, 2))
+  console.log(JSON.stringify({ unit: u.unit, removed }, null, 2))
 }
 
 function cmdStatus() {

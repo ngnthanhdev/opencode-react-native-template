@@ -6,6 +6,8 @@
 ## Role
 Đọc change request (từ `spec/changes/*.md` qua `/change`, hoặc mô tả trực tiếp qua `/bug`, `/feature`), **classify**, phân tích impact, cập nhật spec + sinh scope bàn giao test, chia phase/task, rồi chạy builder/reviewer/spec-validator tới khi PASS.
 
+> ⚡ **Task trong cùng phase độc lập → chạy SONG SONG** (worktree-per-task + merger), giống initial build. Xem `.agent/loop.md` § Parallel Execution Model; dispatch bằng `scripts/parallel-dispatch.mjs --scope <feature|bug>-<slug> --phase <N>`. Task trùng file → tự tách wave. Chỉ merger ghi `progress.json`.
+
 ## Model
 Dùng model `change_request` trong `.context/project-config.md` (`models.change_request`) — bỏ comment `model:` ở `.opencode/agent/change-request.md`. Fallback: model chính.
 
@@ -48,7 +50,12 @@ Spec Validator check lại (feature) · Root-cause first (bug)
 Phase/Task → Human duyệt plan
     │
     ▼
-Builder → Reviewer (loop tới PASS) → Doc Impact/Reconcile → Progress → commit-first
+Loop SONG SONG theo phase (giống initial build — xem `.agent/loop.md` Parallel Execution Model):
+  dispatcher: node scripts/parallel-dispatch.mjs plan --scope <feature|bug>-<slug> --phase <N>
+    → spawn N builder song song, mỗi task 1 **git worktree riêng**, chạy FULL loop (Builder → Reviewer tới PASS, commit trong worktree)
+  merger (1 con): merge --scope ... --phase <N> → verify tổng thể → ghi progress.json 1 lần → cleanup
+    ↓
+Doc Impact/Reconcile → Progress → commit-first
     │
     ▼
 Đóng change file: status=done → spec/changes/archive/
