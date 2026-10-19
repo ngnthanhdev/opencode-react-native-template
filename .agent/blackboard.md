@@ -88,3 +88,31 @@ Khi agent bắt đầu session mới:
 3. **Never delete completedTasks** — chỉ append
 4. **Decisions are permanent** — ghi lại lý do để future agents hiểu context
 5. **blockedTasks vẫn count** — layer không complete nếu còn blocked tasks (trừ khi human approve skip)
+
+---
+
+## File phụ trợ: `.context/agents-live.json` (CHỈ-HIỂN-THỊ)
+
+Dashboard `tools/task-dashboard/` cần biết **agent nào đang làm task nào, ở pha nào** — thứ mà
+`progress.json` + git worktree không trả lời được (reviewer là subagent, không để lại worktree).
+
+Vì vậy loop ghi thêm `.context/agents-live.json` qua helper:
+
+```bash
+node tools/task-dashboard/agent-live.mjs enter --agent builder-1 --role builder \
+  --task layer-1/task-02 --title "..." --phase building --worktree .worktrees/...
+node tools/task-dashboard/agent-live.mjs leave --agent builder-1
+node tools/task-dashboard/agent-live.mjs clear
+```
+
+**Quan hệ với state thật:**
+
+| File | Vai trò |
+|---|---|
+| `.context/progress.json` | **Source of truth** — chỉ merger ghi, 1 lần/layer |
+| `.context/agents-live.json` | **Display-only** — ai đang ngồi đâu, KHÔNG phải state |
+
+- Mất/hỏng/không có `agents-live.json` → loop chạy bình thường, dashboard tự fallback suy luận từ worktree.
+- File nằm trong `.gitignore` (runtime), không commit.
+- Builder **vẫn không** ghi `progress.json` — chỉ gọi `agent-live.mjs`.
+- `enter` upsert theo `--agent`; `leave` = release (dashboard cho biến mất); `clear` = reset đầu layer/khi idle.

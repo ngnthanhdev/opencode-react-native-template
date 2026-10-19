@@ -3,3 +3,7 @@ node_modules/
 dist/
 build/
 .DS_Store
+
+# runtime state (loop ghi, không commit)
+.context/agents-live.json
+.context/agents-live.json.lock

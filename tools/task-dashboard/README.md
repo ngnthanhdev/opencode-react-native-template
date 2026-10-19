@@ -1,63 +1,134 @@
-# Task Dashboard — isometric office cho opencode parallel loop
+# Task Dashboard v2 — văn phòng isometric cho opencode parallel loop
 
-Xem trạng thái task/agent của build loop dưới dạng văn phòng isometric kiểu *Game Dev Story*.
-Mỗi builder đang chạy = 1 nhân vật ngồi bàn gõ phím. Eve (merger) đứng giữa phòng.
+Xem trạng thái build loop dưới dạng **văn phòng isometric 2.5D** kiểu *Game Dev Story*.
+
+- Mỗi **builder** đang chạy = 1 nhân vật ngồi bàn gõ phím (áo cyan). Trên đầu hiện **tên agent + task**.
+- **Reviewer** ngồi bàn riêng, áo tím / tóc vàng → phân biệt bằng mắt.
+- **Eve (merger)** đứng giữa phòng, sáng aura khi tới pha merge.
+- Agent **idle** ngồi khu nghỉ (sofa ☕ góc phòng).
+- Agent **release** → fade out, biến mất khỏi scene.
+- **3 bảng TODO / REVIEW / DONE** hai bên: card tự trượt sang cột mới khi task đổi trạng thái.
 
 **Chỉ đọc. Không ghi, không sửa, không can thiệp loop.**
 
 ## Chạy demo (không cần project)
 
 ```bash
-cd /home/openclaw/.openclaw/workspace/tools/task-dashboard
+cd tools/task-dashboard
 node server.mjs --demo --port 7788
 ```
 
 Mở http://localhost:7788
 
-Demo tự đổi cảnh theo chu kỳ ~54s: build → merge → build layer mới → hoàn tất.
-Muốn xem lại từ đầu thì Ctrl+C rồi chạy lại.
+Demo chạy vòng ~52s mô phỏng đúng luồng mới:
+
+| Pha | Thời gian | Diễn biến |
+|---|---|---|
+| `build` | 0–14s | builder-1/2/3 ngồi máy building, builder-4 ngồi khu nghỉ, TODO có task chờ + 1 blocked 🔴 |
+| `review` | 14–26s | builder-1 **biến mất** (released), task-02 nhảy sang **REVIEW**, reviewer-1 xuất hiện ngồi máy |
+| `review-done` | 26–38s | reviewer-1 **biến mất**, task-02 nhảy sang **DONE** |
+| `merge` | 38–52s | tất cả builder/reviewer release, **merger** active, Eve sáng aura |
+
+Muốn xem lại từ đầu: Ctrl+C rồi chạy lại.
 
 ## Chạy với project thật
 
 ```bash
-node server.mjs --repo /home/openclaw/.openclaw/workspace/opencode-project-template --port 7789
+node server.mjs --repo /path/to/project --port 7789
 ```
 
-Mở http://localhost:7789
+## Nguồn dữ liệu (theo thứ tự ưu tiên)
 
-## Nguồn dữ liệu
+| # | Nguồn | Cho biết gì |
+|---|---|---|
+| 1 | `<repo>/.context/agents-live.json` | **Chính xác** agent nào đang làm: `agent`, `role` (builder/reviewer/merger), `phase` (building/review/merging/idle), `task`, `title`, `worktree`, `since`. Do loop ghi qua `agent-live.mjs` |
+| 2 | `<repo>/.context/progress.json` | `completedTasks` (→ DONE), `blockedTasks` (→ TODO + 🔴 + lý do), `currentLayer`/`totalLayers` |
+| 3 | `git worktree list --porcelain` | **Fallback**: worktree `wt/layer-N__task-NN` còn sống = builder đang chạy task đó |
+| 4 | `<repo>/tasks/**/*.md` | tên task + danh sách task chờ (nếu có task file) |
 
-| Nguồn | Cho biết gì |
+### Fallback — khi chưa có agents-live.json
+
+Nếu loop chưa ghi `agents-live.json` (hoặc file hỏng), dashboard **không crash**: nó suy luận từ
+`progress.json` + git worktree như v1, set `fallback: true` và trả `warnings`.
+Trên HUD hiện badge nhỏ **"⚠ chế độ suy luận"** (hover xem lý do) để không gây hiểu nhầm.
+
+Trong chế độ này **không phân biệt được builder vs reviewer** — task đang chạy đều vẽ là builder.
+
+## Phân loại 3 cột
+
+| Cột | Điều kiện |
 |---|---|
-| `<repo>/.context/progress.json` | `completedTasks` (done), `inProgressTask` (đang dở chính thức), `blockedTasks` (kèm reason), `currentLayer`/`totalLayers`, `lastUpdated` |
-| `git worktree list --porcelain` | **worktree đang sống** → builder nào đang chạy task nào. Branch `wt/layer-N__task-NN` (hoặc `wt/<scope>__phase-N__task-NN`) |
-| `git log -1 --format=%ct <branch>` + mtime worktree | ước lượng "đang active" (quá 10 phút không đổi → đánh dấu `stale`, hiện mờ + chữ "im lặng") |
-| `<repo>/tasks/**/*.md` | tên task + danh sách task `waiting` (nếu có task file) |
+| **TODO** | task `waiting` (chưa có agent, chưa done, chưa blocked) + task `blocked` (hiện 🔴, hover xem lý do) |
+| **REVIEW** | task có agent `role=reviewer, phase=review` trong `agents-live.json`. Fallback: task đã rời worktree nhưng chưa vào `completedTasks` (đoán — kém tin cậy) |
+| **DONE** | task trong `completedTasks` |
 
-## Caveat quan trọng — vì sao "running" lấy từ git
+## Ghi `agents-live.json` — `agent-live.mjs`
 
-Builder chạy song song **không tự ghi `progress.json`** (chống race, chỉ merger ghi 1 lần sau khi merge).
-Nên lúc đang chạy parallel, `progress.json` thường trông như "đứng yên". Nguồn realtime thật là
-**git worktree**: worktree `wt/layer-N__task-NN` còn tồn tại = builder đó còn sống.
+File `.context/agents-live.json` là **file phụ trợ CHỈ-HIỂN-THỊ**. Không phải source of truth
+(`progress.json` vẫn là chính). Mất file không ảnh hưởng loop build.
 
-Hệ quả:
+```bash
+# agent nhận task → xuất hiện trong scene
+node tools/task-dashboard/agent-live.mjs enter \
+  --agent builder-1 --role builder \
+  --task layer-1/task-02 --title "REST API /users" \
+  --phase building --worktree .worktrees/wt/layer-1__task-02
 
-- Task vừa merge xong nhưng worktree chưa cleanup có thể hiện `running` trong vài giây → vài phút.
-  Dashboard ưu tiên `completedTasks` trước, nên task đã done sẽ hiện done dù worktree còn.
-- Nếu builder chết giữa chừng, worktree vẫn còn → vẫn hiện `running` nhưng có cờ `stale`
-  (mtime/commit cũ hơn 10 phút).
-- `waiting` chỉ suy ra được khi repo có task file trong `tasks/`. Không có thì dashboard chỉ hiện
-  running/done/blocked, không bịa task.
+# builder PASS → release builder, reviewer nhận task
+node tools/task-dashboard/agent-live.mjs leave --agent builder-1
+node tools/task-dashboard/agent-live.mjs enter \
+  --agent reviewer-1 --role reviewer \
+  --task layer-1/task-02 --title "REST API /users" --phase review
 
-## Pha merge
+# reviewer PASS → release reviewer (task vào DONE qua merger ghi progress.json)
+node tools/task-dashboard/agent-live.mjs leave --agent reviewer-1
 
-`phase` được suy ra: còn builder chạy → `building`; hết builder mà có task done → `merging`
-(Eve sáng, aura cyan); mọi task done → `complete`. Nếu `progress.json` có field `phase` thì dùng luôn.
+# merger bắt đầu / xong layer
+node tools/task-dashboard/agent-live.mjs enter --agent merger --role merger --phase merging
+node tools/task-dashboard/agent-live.mjs clear
+```
+
+- `enter` = upsert (gọi lại nhiều lần không tạo trùng). Giữ `since` nếu cùng task+phase.
+- `leave` = xoá agent khỏi mảng → dashboard fade out.
+- `clear` = reset mảng rỗng (đầu layer / khi idle).
+- Ghi **atomic** (tmp + rename) + **lock thư mục** `.lock` → chịu được nhiều process ghi song song.
+- Tự tìm repo root: `git rev-parse --git-common-dir` (đúng cả trong worktree) → `--show-toplevel` → đi ngược thư mục. Override bằng `--repo <path>`.
+
+Schema:
+
+```json
+{
+  "updatedAt": "2026-10-19T09:26:53.963Z",
+  "agents": [
+    { "agent": "builder-1", "role": "builder", "phase": "building",
+      "task": "layer-1/task-02", "title": "REST API /users",
+      "worktree": ".worktrees/wt/layer-1__task-02", "since": "2026-10-19T09:26:53.812Z" },
+    { "agent": "reviewer-1", "role": "reviewer", "phase": "review",
+      "task": "layer-1/task-01", "title": "Auth middleware", "since": "..." },
+    { "agent": "merger", "role": "merger", "phase": "merging", "since": "..." }
+  ]
+}
+```
+
+`phase` hợp lệ: `building` | `review` | `merging` | `idle`. Agent `phase: "idle"` → vẽ ở khu nghỉ.
+
+> `.context/agents-live.json` nằm trong `.gitignore` — file runtime, không commit.
 
 ## API
 
-- `GET /api/state` — JSON tổng hợp (không cache)
-- `GET /api/health` — `{ok, version, demo, repo}`
+`GET /api/state` trả:
+
+| Field | Nội dung |
+|---|---|
+| `agents` | agent **đang active** (`building`/`review`/`merging`): `{agent, role, task, title, phase, worktree, since, sinceSec}`. Agent không còn trong `agents-live.json` = đã release = không trả về |
+| `benchAgents` | agent `phase: "idle"` → vẽ ở khu nghỉ |
+| `columns` | `{todo: [...], review: [...], done: [...]}` — card của 3 bảng |
+| `counts` | `{building, review, done, blocked, todo, running, waiting, total}` (`running`/`waiting` giữ cho tương thích v1) |
+| `fallback` | `true` khi đang suy luận (không có `agents-live.json`) |
+| `agentsLive` | `{present, updatedAt, count}` |
+| `warnings` | mảng cảnh báo (hiện trên badge HUD) |
+
+`GET /api/health` → `{ok, version, demo, repo}`
 
 ## Tham số
 
@@ -71,25 +142,24 @@ Hệ quả:
 ## An toàn
 
 - Chỉ gọi `git worktree list`, `git log -1`, `git -C` với lệnh read-only. Không `add`/`commit`/`merge`/`checkout`.
-- Chỉ `fs.readFileSync` / `readdirSync` / `statSync`. Không ghi file nào vào repo.
+- Server chỉ `fs.readFileSync` / `readdirSync` / `statSync`. Không ghi file nào vào repo.
 - Repo không phải git, thiếu `progress.json`, JSON hỏng → trả state gọn với `ok:false`, server không crash.
+- `agent-live.mjs` chỉ ghi đúng 1 file `.context/agents-live.json` (+ lock tạm). Không đụng `progress.json`.
+
+## UI
+
+- Isometric 2.5D thuần DOM/CSS/SVG inline — không lib ngoài, không CDN.
+- Auto-refresh 3s, overlay khi mất kết nối.
+- Card đổi cột → animation **FLIP** trượt từ vị trí cũ sang vị trí mới.
+- Tôn trọng `prefers-reduced-motion`.
 
 ## Cấu trúc
 
 ```
 tools/task-dashboard/
-├── server.mjs            # HTTP server + đọc progress.json + git worktree
+├── server.mjs            # HTTP server + đọc agents-live/progress + git worktree
+├── agent-live.mjs        # ghi .context/agents-live.json (enter/leave/clear)
 ├── index.html            # toàn bộ UI, inline CSS/JS, SVG isometric
-├── sample-progress.json  # mẫu progress.json đúng schema thật
+├── sample-progress.json  # mẫu progress.json đúng schema
 └── README.md
-```
-
-## Test nhanh bằng sample
-
-Copy `sample-progress.json` vào một repo giả:
-
-```bash
-mkdir -p /tmp/demo-repo/.context && cp sample-progress.json /tmp/demo-repo/.context/progress.json
-cd /tmp/demo-repo && git init -q && git add -A && git commit -qm init
-node /home/openclaw/.openclaw/workspace/tools/task-dashboard/server.mjs --repo /tmp/demo-repo --port 7790
 ```
