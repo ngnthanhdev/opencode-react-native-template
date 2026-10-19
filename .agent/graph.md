@@ -122,4 +122,6 @@ build (initial) | feature | bug
      "inProgressTask": null
    }
    ```
+   → `completedTasks` là mảng **object** `{task, review?, round?, report?, completedAt?}` (string cũ vẫn đọc được).
+   Ghi bằng helper thay vì tự viết JSON tay: `node tools/task-dashboard/progress-write.mjs set-layer --current 0 --total N`.
 8. Sau khi user approve plan → bàn giao `.agent/loop.md` thực thi từng task.
