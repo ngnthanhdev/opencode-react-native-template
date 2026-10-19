@@ -4,7 +4,7 @@ Xem trạng thái build loop dưới dạng **văn phòng isometric 2.5D** kiể
 
 - Mỗi **builder** đang chạy = 1 nhân vật ngồi bàn gõ phím (áo cyan). Trên đầu hiện **tên agent + task**.
 - **Reviewer** ngồi bàn riêng, áo tím / tóc vàng → phân biệt bằng mắt.
-- **Eve (merger)** đứng giữa phòng, sáng aura khi tới pha merge.
+- **Eve (bước merge)** đứng giữa phòng, sáng aura khi tới pha merge — **hình ảnh trực quan của bước merge**, không phải một agent con (không có `merger.md`; merge do dispatcher chạy `scripts/parallel-dispatch.mjs merge` + `cleanup`).
 - Agent **idle** ngồi khu nghỉ (sofa ☕ góc phòng).
 - Agent **release** → fade out, biến mất khỏi scene.
 - **3 bảng TODO / REVIEW / DONE** hai bên: card tự trượt sang cột mới khi task đổi trạng thái.
@@ -45,6 +45,16 @@ node server.mjs --repo /path/to/project --port 7789
 | 2 | `<repo>/.context/progress.json` | `completedTasks` (→ DONE), `blockedTasks` (→ TODO + 🔴 + lý do), `currentLayer`/`totalLayers` |
 | 3 | `git worktree list --porcelain` | **Fallback**: worktree `wt/layer-N__task-NN` còn sống = builder đang chạy task đó |
 | 4 | `<repo>/tasks/**/*.md` | tên task + danh sách task chờ (nếu có task file) |
+| 5 | `<repo>/.context/progress.json` → `features[]` / `bugs[]` | task của change-request (`phase-N-task-NN`) — chưa done vẫn hiện ở TODO/REVIEW/DONE theo `status` |
+| 6 | `<worktree>/.context/{progress,agents-live}.json` + `<worktree>/.context/runs/*.md` | change-request chạy trong worktree riêng → gộp vào state tổng (Run Journal `status=running` = đang chạy) |
+
+### B2 — change-request đang chạy
+
+- Dashboard quét **mọi** worktree trong `git worktree list` (không chỉ `wt/*`): nhận `wt/layer-N__task-NN`,
+  `claude/<slug>`, branch chứa `phase-N-task-NN`/`layer-N-task-NN`. Worktree không map được task vẫn hiện
+  là **builder/worktree vô danh** (kèm warning) thay vì bỏ im.
+- `agent-live.mjs` luôn ghi `.context/agents-live.json` của **repo gốc** (resolve `git rev-parse --git-common-dir`),
+  kể cả khi gọi từ trong worktree → dashboard chỉ đọc 1 chỗ.
 
 ### Fallback — khi chưa có agents-live.json
 
@@ -61,6 +71,34 @@ Trong chế độ này **không phân biệt được builder vs reviewer** — 
 | **TODO** | task `waiting` (chưa có agent, chưa done, chưa blocked) + task `blocked` (hiện 🔴, hover xem lý do) |
 | **REVIEW** | task có agent `role=reviewer, phase=review` trong `agents-live.json`. Fallback: task đã rời worktree nhưng chưa vào `completedTasks` (đoán — kém tin cậy) |
 | **DONE** | task trong `completedTasks` |
+
+### B1 — `completedTasks` schema
+
+Chuẩn là **mảng object**:
+
+```json
+{ "task": "layer-0/task-01", "review": "STRICT PASS", "round": 1,
+  "report": ".context/review-reports/...", "completedAt": "ISO" }
+```
+
+`task` = id (bắt buộc), các field khác optional. String cũ (`"layer-0/task-01"`) vẫn đọc được
+(backward-compat). Phần tử không đọc được → **warning** trên HUD, không bỏ im lặng.
+
+`blockedTasks` nhận cả `{task, reason, since}` lẫn string.
+
+Khuyến nghị ghi bằng helper thay vì viết JSON tay:
+
+```bash
+node tools/task-dashboard/progress-write.mjs complete --task layer-1/task-02 \
+     --review "STRICT PASS" --round 1 --report .context/review-reports/...
+node tools/task-dashboard/progress-write.mjs block --task layer-1/task-03 --reason "..."
+node tools/task-dashboard/progress-write.mjs in-progress --task layer-1/task-04
+node tools/task-dashboard/progress-write.mjs clear-in-progress
+node tools/task-dashboard/progress-write.mjs set-layer --current 2 --total 5
+```
+
+Helper atomic (tmp+rename) + lock, dedupe theo task, tự xoá task khỏi `inProgressTask`/`blockedTasks`
+khi `complete`, không crash khi file chưa có, và tự tìm repo gốc nên chạy được từ trong worktree.
 
 ## Ghi `agents-live.json` — `agent-live.mjs`
 
@@ -80,10 +118,10 @@ node tools/task-dashboard/agent-live.mjs enter \
   --agent reviewer-1 --role reviewer \
   --task layer-1/task-02 --title "REST API /users" --phase review
 
-# reviewer PASS → release reviewer (task vào DONE qua merger ghi progress.json)
+# reviewer PASS → release reviewer (task vào DONE khi dispatcher ghi progress.json lúc merge)
 node tools/task-dashboard/agent-live.mjs leave --agent reviewer-1
 
-# merger bắt đầu / xong layer
+# bước merge bắt đầu / xong layer (dispatcher tự chạy, đây chỉ là nhãn hiển thị)
 node tools/task-dashboard/agent-live.mjs enter --agent merger --role merger --phase merging
 node tools/task-dashboard/agent-live.mjs clear
 ```
@@ -127,8 +165,18 @@ Schema:
 | `fallback` | `true` khi đang suy luận (không có `agents-live.json`) |
 | `agentsLive` | `{present, updatedAt, count}` |
 | `warnings` | mảng cảnh báo (hiện trên badge HUD) |
+| `version` | version server (khớp `PAGE_VERSION` trong `index.html`) |
+| `worktrees` | danh sách worktree đang mở: `{path, rel, branch, task, mapped}` |
 
 `GET /api/health` → `{ok, version, demo, repo}`
+
+### B3 — server cũ (Node không hot-reload)
+
+`index.html` hard-code `PAGE_VERSION`. Mỗi lần fetch `/api/state`, trang so `state.version` với
+`PAGE_VERSION`; lệch (hoặc thiếu `columns` / `counts.todo`) → hiện badge đỏ nổi bật
+**"⚠ server cũ (vX) — restart dashboard"** và giữ nguyên cho tới khi restart.
+
+> ⚠️ **Sau khi `git pull` / sync template → PHẢI restart server** (Ctrl+C rồi chạy lại).
 
 ## Tham số
 
@@ -159,6 +207,7 @@ Schema:
 tools/task-dashboard/
 ├── server.mjs            # HTTP server + đọc agents-live/progress + git worktree
 ├── agent-live.mjs        # ghi .context/agents-live.json (enter/leave/clear)
+├── progress-write.mjs    # ghi .context/progress.json (complete/block/in-progress/set-layer)
 ├── index.html            # toàn bộ UI, inline CSS/JS, SVG isometric
 ├── sample-progress.json  # mẫu progress.json đúng schema
 └── README.md

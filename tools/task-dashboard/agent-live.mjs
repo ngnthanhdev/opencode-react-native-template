@@ -49,25 +49,35 @@ function warn(msg) {
 }
 
 // ── tìm repo root ───────────────────────────────────────────────────────────
-function findRepo(explicit) {
-  if (explicit && explicit !== true) return path.resolve(String(explicit));
-
-  // trong git worktree, --show-toplevel trả về worktree; ưu tiên repo chính
+function rootFromGit(dir) {
+  // trong git worktree, --git-common-dir trỏ về .git của repo CHÍNH
   try {
     const common = execFileSync(
-      'git', ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+      'git', ['-C', dir, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
       { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] }
     ).trim();
     if (common && path.basename(common) === '.git') return path.dirname(common);
+    if (common) return path.dirname(common);
   } catch { /* không phải git repo / git cũ */ }
-
   try {
     const top = execFileSync(
-      'git', ['rev-parse', '--show-toplevel'],
+      'git', ['-C', dir, 'rev-parse', '--show-toplevel'],
       { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] }
     ).trim();
     if (top) return top;
   } catch { /* ignore */ }
+  return null;
+}
+
+function findRepo(explicit) {
+  // --repo có thể là worktree → luôn resolve về repo GỐC để dashboard đọc 1 chỗ
+  if (explicit && explicit !== true) {
+    const p = path.resolve(String(explicit));
+    return rootFromGit(p) || p;
+  }
+
+  const fromCwd = rootFromGit(process.cwd());
+  if (fromCwd) return fromCwd;
 
   let dir = process.cwd();
   for (;;) {

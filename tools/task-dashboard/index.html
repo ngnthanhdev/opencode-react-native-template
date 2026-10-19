@@ -70,6 +70,11 @@
   .chip.layer{color:var(--cyan); border-color:rgba(63,224,255,.4); background:rgba(63,224,255,.09)}
   .chip.layer b{color:#fff}
   .chip.warn{color:#FFDDA6; border-color:rgba(255,198,92,.5); background:rgba(255,198,92,.1); cursor:help}
+  .chip.stale{
+    color:#fff; border-color:rgba(255,92,122,.85); background:rgba(255,92,122,.9);
+    font-weight:700; box-shadow:0 0 16px rgba(255,92,122,.55); animation:stalePulse 1.6s ease-in-out infinite;
+  }
+  @keyframes stalePulse{0%,100%{box-shadow:0 0 10px rgba(255,92,122,.4)}50%{box-shadow:0 0 22px rgba(255,92,122,.95)}}
 
   .spacer{flex:1 1 auto}
   .counters{display:flex; gap:7px; align-items:center}
@@ -480,6 +485,7 @@
     <div class="chip layer" id="layerChip">Layer <b>—</b></div>
     <div class="chip demo" id="demoChip" style="display:none">DEMO</div>
     <div class="chip warn" id="fallbackChip" style="display:none" title="">⚠ chế độ suy luận</div>
+    <div class="chip stale" id="staleChip" style="display:none" title=""></div>
 
     <div class="spacer"></div>
 
@@ -603,6 +609,9 @@
 <script>
 (() => {
   'use strict';
+
+  // Khớp VERSION trong server.mjs. Lệch → server đang chạy bản cũ (Node không hot-reload).
+  const PAGE_VERSION = '2.1.0';
 
   // ── hình học isometric ────────────────────────────────────────────────
   const TW = 118, TH = 59;
@@ -1148,6 +1157,32 @@
 
   function render(state) {
     const counts = state.counts || {};
+
+    // ── phát hiện server cũ (bản v1 thiếu version/columns/counts.todo) ─────
+    const sv = typeof state.version === 'string' ? state.version : null;
+    const cols = state.columns && typeof state.columns === 'object' ? state.columns : null;
+    const hasColumns = !!cols && ['todo', 'review', 'done'].every((k) => Array.isArray(cols[k]));
+    const versionMismatch = !sv || sv !== PAGE_VERSION;
+    const missingShape = !hasColumns || !state.counts || state.counts.todo === undefined;
+    const stale = versionMismatch || missingShape;
+
+    const sc = $('staleChip');
+    if (sc) {
+      sc.style.display = stale ? '' : 'none';
+      if (stale) {
+        const shown = sv || 'v1 (không có field version)';
+        sc.textContent = `⚠ server cũ (${shown}) — restart dashboard`;
+        sc.title = [
+          `Trang này là v${PAGE_VERSION}, server đang trả ${shown}.`,
+          missingShape ? 'Thiếu columns/counts.todo → bảng sẽ trống.' : 'Version lệch → số liệu có thể sai.',
+          'Node không hot-reload: Ctrl+C server rồi chạy lại `node server.mjs --repo <path>`.',
+        ].join('\n');
+      }
+    }
+    if (stale && missingShape && !(state.warnings || []).length) {
+      // vẫn render phần còn đọc được, không throw
+      state = { ...state, columns: hasColumns ? state.columns : { todo: [], review: [], done: [] } };
+    }
 
     $('pname').textContent = state.projectName || '—';
     document.title = `${state.projectName || 'task office'} — opencode loop`;

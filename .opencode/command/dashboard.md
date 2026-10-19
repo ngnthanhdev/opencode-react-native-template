@@ -13,7 +13,7 @@ Tool **độc lập, chỉ đọc** ở `tools/task-dashboard/`. Không ghi, kh�
 **Văn phòng sống động:**
 - Mỗi agent đang active = 1 nhân vật **ngồi bàn gõ phím**, trên đầu hiện **tên agent + task** (`builder-1`, `reviewer-1`…).
 - **Builder** áo cyan, **reviewer** áo tím/tóc vàng — phân biệt bằng mắt.
-- **Eve (merger)** đứng giữa phòng, aura sáng khi tới pha merge.
+- **Eve (merge)** đứng giữa phòng, aura sáng khi tới pha merge — đây là **hình ảnh trực quan của bước merge**, không phải một agent con.
 - Agent **idle** ngồi khu nghỉ (sofa ☕ góc phòng).
 - Agent **release** → fade out, biến mất khỏi scene.
 
@@ -53,7 +53,7 @@ node tools/task-dashboard/agent-live.mjs leave --agent builder-1
 node tools/task-dashboard/agent-live.mjs enter --agent reviewer-1 --role reviewer \
   --task layer-1/task-02 --title "REST API /users" --phase review
 
-# reviewer PASS → release reviewer; merger bắt đầu / xong layer
+# reviewer PASS → release reviewer; bước merge bắt đầu / xong layer (dispatcher tự chạy)
 node tools/task-dashboard/agent-live.mjs leave --agent reviewer-1
 node tools/task-dashboard/agent-live.mjs enter --agent merger --role merger --phase merging
 node tools/task-dashboard/agent-live.mjs clear
@@ -61,6 +61,12 @@ node tools/task-dashboard/agent-live.mjs clear
 
 `agents-live.json` là **file DISPLAY**, không phải source of truth — `progress.json` vẫn là chính.
 Mất file không ảnh hưởng loop. File nằm trong `.gitignore`.
+
+> `--agent merger` ở đây chỉ là **nhãn hiển thị** cho bước merge; người chạy là dispatcher
+> (`scripts/parallel-dispatch.mjs merge` + `cleanup`), KHÔNG có agent con tên merger.
+
+Helper luôn ghi về `.context/agents-live.json` của **repo gốc** (resolve qua `git rev-parse
+--git-common-dir`), kể cả khi gọi từ trong worktree — dashboard chỉ cần đọc 1 chỗ.
 
 ## Cách chạy
 
@@ -75,7 +81,7 @@ Mở http://localhost:7788
 node tools/task-dashboard/server.mjs --demo --port 7788
 ```
 Demo chạy vòng ~52s mô phỏng đúng luồng: build → builder-1 xong (biến mất) → task sang REVIEW →
-reviewer-1 xuất hiện → reviewer xong (biến mất) → task sang DONE → merger active.
+reviewer-1 xuất hiện → reviewer xong (biến mất) → task sang DONE → bước merge active.
 
 **Mở được từ máy khác (LAN):** thêm `--host 0.0.0.0`.
 
@@ -83,6 +89,8 @@ reviewer-1 xuất hiện → reviewer xong (biến mất) → task sang DONE →
 
 - Chỉ dùng `node` builtin — KHÔNG cần `npm install`.
 - Port mặc định 7788, đổi bằng `--port <N>`.
+- ⚠️ **Sau khi `git pull`/sync template → PHẢI restart server dashboard** (Ctrl+C rồi chạy lại).
+  Node không hot-reload: server cũ vẫn trả schema cũ → trang hiện badge đỏ "⚠ server cũ (vX) — restart dashboard".
 - Lúc chạy song song builder không ghi `progress.json` (chống race). Nếu loop chưa gọi `agent-live.mjs`
   thì "running" suy từ `git worktree` — kém chính xác hơn.
 - Đây là tool quan sát, hoàn toàn tách khỏi logic loop/build.

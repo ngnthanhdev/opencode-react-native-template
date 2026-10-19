@@ -98,7 +98,7 @@ node /path/to/template/scripts/template-sync.mjs --project /path/to/project
 
 ## Overview
 
-This template provides a **multi-agent workflow** for **mobile repos that already have code** (bug / feature / update). Start with `/start` (type once, runs continuously): read spec → brainstorm (clarify requirements + config) → design (tokens + screen specs) → graph (split layers/tasks) → loop executes independent tasks **in parallel** (worktree-per-task + merger) → `/change` for all subsequent changes (the `change-request` agent). `AGENTS.md` routes every request; specialized subagents handle build, independent review, spec validation, and close-out.
+This template provides a **multi-agent workflow** for **mobile repos that already have code** (bug / feature / update). Start with `/start` (type once, runs continuously): read spec → brainstorm (clarify requirements + config) → design (tokens + screen specs) → graph (split layers/tasks) → loop executes independent tasks **in parallel** (worktree-per-task, then the dispatcher merges) → `/change` for all subsequent changes (the `change-request` agent). `AGENTS.md` routes every request; specialized subagents handle build, independent review, spec validation, and close-out.
 
 **Key features:**
 - 🧭 **Intent router** — `AGENTS.md` classifies every request (bug / sweep / feature / review / research) before any code is touched
@@ -194,7 +194,7 @@ project-template/
 │   ├── brainstorm.md             ← ✅ Read spec/code → clarify requirements + set config → .context/project-config.md
 │   ├── design.md                 ← Design Agent: design tokens + screen specs (before layer split)
 │   ├── graph.md                  ← Split spec/design → layers + tasks (dependency order)
-│   ├── loop.md                   ← Execute tasks in parallel (ReAct, worktree-per-task + merger)
+│   ├── loop.md                   ← Execute tasks in parallel (ReAct, worktree-per-task, dispatcher merges)
 │   ├── devops.md                 ← Git init, EAS build, store deploy
 │   ├── rollback.md               ← Git checkpoint + revert strategy
 │   ├── blackboard.md             ← Shared state (.context/progress.json is the source of truth)
@@ -390,7 +390,7 @@ Loop Agent — execute tasks in PARALLEL (ReAct per task, worktree-per-task)
 │    ├─ 5c Error Analyzer → fix → retry (max 3)
 │    ├─ 5d Reviewer  independent review (different model)
 │    └─ commit inside worktree
-└─ 5e Merger    merge all task branches → verify whole layer → write progress.json once → cleanup
+└─ 5e Merge     dispatcher merges all task branches → verify whole layer → write progress.json once → cleanup
     │
     ▼
 ⏸ Human Checkpoint → next layer (Layer N+1 only unlocks when Layer N PASSes + you approve)

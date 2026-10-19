@@ -22,7 +22,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 
 // ── args ────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
@@ -273,7 +273,7 @@ function normAgent(a, nowSec) {
     const t = Date.parse(a.since);
     if (Number.isFinite(t)) sinceSec = Math.max(0, Math.round(nowSec - t / 1000));
   }
-  return {
+  const out = {
     agent: a.agent,
     role: a.role || 'builder',
     task: a.task || null,
@@ -283,6 +283,242 @@ function normAgent(a, nowSec) {
     since: a.since || null,
     sinceSec,
   };
+  if (a.source) out.source = a.source;
+  if (a.anonymous) out.anonymous = true;
+  return out;
+}
+
+// ── normalizers (schema-tolerant) ───────────────────────────────────────────
+/** Nhận id task từ string hoặc object {task|id|slug}. */
+function taskIdOf(v) {
+  if (typeof v === 'string') return v.trim() || null;
+  if (v && typeof v === 'object') {
+    for (const k of ['task', 'id', 'slug']) {
+      if (typeof v[k] === 'string' && v[k].trim()) return v[k].trim();
+    }
+  }
+  return null;
+}
+
+/**
+ * completedTasks: mảng string (backward-compat) HOẶC mảng object
+ *   { task, review, round, report, completedAt }
+ * Phần tử không đọc được → KHÔNG bỏ im lặng: push warning.
+ */
+function normalizeCompletedTasks(raw, warnings, src = 'completedTasks') {
+  const list = [];
+  const entries = new Map();
+  if (!Array.isArray(raw)) return { list, entries };
+  raw.forEach((x, i) => {
+    if (typeof x === 'string') {
+      const id = x.trim();
+      if (!id) return;
+      if (!entries.has(id)) { entries.set(id, null); list.push(id); }
+      return;
+    }
+    if (x && typeof x === 'object') {
+      const id = taskIdOf(x);
+      if (!id) {
+        warnings.push(`${src}[${i}] không đọc được format (object thiếu .task) — bỏ qua`);
+        return;
+      }
+      const entry = { task: id };
+      if (typeof x.review === 'string') entry.review = x.review;
+      if (x.round != null && Number.isFinite(Number(x.round))) entry.round = Number(x.round);
+      if (typeof x.report === 'string') entry.report = x.report;
+      if (typeof x.completedAt === 'string') entry.completedAt = x.completedAt;
+      entries.set(id, entry);
+      if (!list.includes(id)) list.push(id);
+      return;
+    }
+    warnings.push(`${src}[${i}] không đọc được format (${x === null ? 'null' : typeof x}) — bỏ qua`);
+  });
+  return { list, entries };
+}
+
+/** blockedTasks: object {task,reason,since} (chuẩn) hoặc string (backward-compat). */
+function normalizeBlockedTasks(raw, warnings, src = 'blockedTasks') {
+  const map = new Map();
+  if (!Array.isArray(raw)) return map;
+  raw.forEach((b, i) => {
+    if (typeof b === 'string') {
+      const id = b.trim();
+      if (id) map.set(id, { reason: 'không rõ lý do', since: null });
+      return;
+    }
+    if (b && typeof b === 'object') {
+      const id = taskIdOf(b);
+      if (id) {
+        map.set(id, {
+          reason: typeof b.reason === 'string' ? b.reason : 'không rõ lý do',
+          since: b.since || null,
+        });
+        return;
+      }
+    }
+    warnings.push(`${src}[${i}] không đọc được format — bỏ qua`);
+  });
+  return map;
+}
+
+/** features[]/bugs[] (change-request) → danh sách task phase-N-task-NN. */
+function tasksFromWorkItems(raw, repo) {
+  const out = [];
+  for (const key of ['features', 'bugs']) {
+    const arr = Array.isArray(raw[key]) ? raw[key] : [];
+    for (const it of arr) {
+      if (!it || typeof it !== 'object') continue;
+      const prefix = key === 'features' ? 'feature' : 'bug';
+      const slug = typeof it.slug === 'string' && it.slug.trim() ? it.slug.trim() : null;
+      const scope = resolveItemScope(repo, prefix, slug);
+      const itemStatus = typeof it.status === 'string' ? it.status : null;
+      const itemTitle = typeof it.title === 'string' ? it.title : null;
+      const tasks = Array.isArray(it.tasks) ? it.tasks : [];
+      for (const t of tasks) {
+        let id = null;
+        let st = null;
+        let title = null;
+        if (typeof t === 'string') id = t;
+        else if (t && typeof t === 'object') {
+          id = t.id || t.task || t.slug || null;
+          st = typeof t.status === 'string' ? t.status : null;
+          title = typeof t.title === 'string' ? t.title : null;
+        }
+        if (typeof id !== 'string' || !id.trim()) continue;
+        id = id.trim();
+        const bare = !id.includes('/');
+        const m = id.match(/phase-(\d+)[-_]task-(\d+)/i);
+        if (m && (bare || !/\/phase-\d+\/task-\d+$/.test(id))) {
+          // ưu tiên tên thư mục THẬT trong tasks/ (khớp id dùng trong worktree/progress)
+          const fromDir = scopeForPhaseTask(repo, m[1], m[2], scope);
+          const useScope = fromDir || scope;
+          id = useScope ? `${useScope}/phase-${m[1]}/task-${m[2]}` : `phase-${m[1]}/task-${m[2]}`;
+        }
+        out.push({
+          id,
+          status: st || itemStatus || null,
+          title: title || itemTitle || null,
+          source: key,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** Tên thư mục trong tasks/ có phase-N-task-NN.md → scope (feature-x | bug-y). */
+function scopeForPhaseTask(repo, phase, taskNum, preferred = null) {
+  const root = path.join(repo, 'tasks');
+  let dirs = [];
+  try {
+    dirs = fs.readdirSync(root, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+  } catch { return null; }
+  const hits = dirs.filter((name) => {
+    try {
+      const re = new RegExp(`^phase-${phase}-task-0*${taskNum}\\.md$`, 'i');
+      return fs.readdirSync(path.join(root, name)).some((f) => re.test(f));
+    } catch { return false; }
+  });
+  if (preferred && hits.includes(preferred)) return preferred;
+  if (hits.length === 1) return hits[0];
+  return hits.find((h) => /^(feature|bug)-/.test(h)) || null;
+}
+
+const normKey = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * scope của 1 feature/bug phải khớp TÊN THƯ MỤC THẬT trong tasks/, để id task
+ * trên dashboard trùng id trong progress/worktree (tránh "feature-dark-mode" vs "feature-darkmode").
+ */
+function resolveItemScope(repo, prefix, slug) {
+  const want = slug ? (slug.startsWith(`${prefix}-`) ? slug : `${prefix}-${slug}`) : null;
+  if (!want) return null;
+  let dirs = [];
+  try {
+    dirs = fs.readdirSync(path.join(repo, 'tasks'), { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+  } catch { return want; }
+  if (dirs.includes(want)) return want;
+  const loose = dirs.find((d) => normKey(d) === normKey(want));
+  return loose || want;
+}
+
+/**
+ * branch → task id. Nhận:
+ *   wt/layer-N__task-NN, layer-N/task-NN, layer-N-task-NN
+ *   <scope>-phase-N__task-NN, <scope>/phase-N/task-NN
+ *   claude/<slug> chứa phase-N-task-NN / layer-N-task-NN
+ *   bare phase-N-task-NN → tra tasks/ để tìm scope
+ */
+function taskFromBranch(repo, branch) {
+  if (!branch || typeof branch !== 'string') return null;
+  let b = branch.replace(/^refs\/heads\//, '');
+  if (b.startsWith('wt/')) b = b.slice(3);
+
+  let m = b.match(/(?:^|[\/_-])layer-(\d+)[\/_-]+task-(\d+)/i);
+  if (m) return { id: `layer-${m[1]}/task-${m[2]}`, layer: Number(m[1]), unit: `layer-${m[1]}` };
+
+  m = b.match(/^([a-z0-9][a-z0-9._-]*?)[\/_]phase-(\d+)[\/_-]+task-(\d+)/i);
+  if (m) {
+    const scope = m[1].replace(/[\/_]+$/, '');
+    return { id: `${scope}/phase-${m[2]}/task-${m[3]}`, layer: Number(m[2]), unit: `${scope}-phase-${m[2]}` };
+  }
+
+  m = b.match(/phase-(\d+)[\/_-]+task-(\d+)/i);
+  if (m) {
+    const scope = scopeForPhaseTask(repo, m[1], m[2]);
+    const id = scope ? `${scope}/phase-${m[1]}/task-${m[2]}` : `phase-${m[1]}/task-${m[2]}`;
+    return { id, layer: Number(m[1]), unit: scope ? `${scope}-phase-${m[1]}` : null };
+  }
+  return null;
+}
+
+/** status của task/feature/bug → cột dashboard. */
+function statusToColumn(st) {
+  const s = String(st || '').toLowerCase().trim();
+  if (/^(done|complete|completed|merged|pass|passed|closed)$/.test(s)) return 'done';
+  if (/review|awaiting_review/.test(s)) return 'review';
+  if (/in[_-]?progress|building|running|fixing/.test(s)) return 'running';
+  if (/blocked|architecture_review_needed/.test(s)) return 'blocked';
+  return 'waiting';
+}
+
+/** Run Journal (.context/runs/*.md): dòng status=running → agent đang chạy. */
+function agentsFromRuns(wtInfo, warnings) {
+  const out = [];
+  const dir = path.join(wtInfo.path, '.context', 'runs');
+  let files = [];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
+  } catch { return out; }
+  for (const f of files.slice(0, 40)) {
+    const file = path.join(dir, f);
+    let txt = '';
+    let mtimeMs = 0;
+    try {
+      txt = fs.readFileSync(file, 'utf8').slice(0, 8000);
+      mtimeMs = fs.statSync(file).mtimeMs;
+    } catch { continue; }
+    if (!/status\s*=\s*running/i.test(txt)) continue;
+    const am = txt.match(/\[agent:\s*([a-z0-9_.-]+)\]/i) || txt.match(/\bagent\s*[:=]\s*([a-z0-9_.-]+)/i);
+    const tm = txt.match(/\b(?:task|phaseTask)\s*[:=]\s*([a-z0-9._\/-]*(?:layer|phase)-[a-z0-9._\/-]*task-\d+)/i);
+    const role = /\breviewer\b/i.test(txt) || /^review/i.test(f) ? 'reviewer' : 'builder';
+    out.push({
+      agent: am ? am[1] : `run-${f.replace(/\.md$/, '').slice(0, 24)}`,
+      role,
+      phase: role === 'reviewer' ? 'review' : 'building',
+      task: (tm && tm[1]) || wtInfo.task || null,
+      title: null,
+      worktree: wtInfo.rel,
+      since: mtimeMs ? new Date(mtimeMs).toISOString() : null,
+      guessed: true,
+      source: 'run-journal',
+    });
+  }
+  return out;
 }
 
 function buildLiveState(repo) {
@@ -299,20 +535,22 @@ function buildLiveState(repo) {
   }
 
   const p = prog.raw || {};
-  const completed = Array.isArray(p.completedTasks)
-    ? p.completedTasks.filter((x) => typeof x === 'string')
-    : [];
-  const blockedArr = Array.isArray(p.blockedTasks)
-    ? p.blockedTasks.filter((b) => b && typeof b.task === 'string')
-    : [];
-  const inProgress = typeof p.inProgressTask === 'string' && p.inProgressTask
-    ? p.inProgressTask
-    : (typeof p.activeWorkItem === 'string' && p.activeWorkItem ? p.activeWorkItem : null);
+  const completedNorm = normalizeCompletedTasks(p.completedTasks, warnings);
+  const completed = completedNorm.list;
+  const completedEntries = completedNorm.entries;
+  const blockedMap = normalizeBlockedTasks(p.blockedTasks, warnings);
+  const inProgress = taskIdOf(p.inProgressTask) || taskIdOf(p.activeWorkItem);
   const currentLayer = Number(p.currentLayer) || 0;
   const totalLayers = Number(p.totalLayers) || 0;
   const nowSec = Date.now() / 1000;
 
-  // ── nguồn 1: agents-live.json ────────────────────────────────────────────
+  // task file của repo gốc → title map + danh sách waiting
+  const allDiscovered = discoverTasks(repo);
+  const discovered = allDiscovered.filter((d) => d.layer === currentLayer);
+  const titleMap = new Map();
+  for (const d of allDiscovered) if (d.title) titleMap.set(d.id, d.title);
+
+  // ── nguồn 1: agents-live.json (repo gốc) ─────────────────────────────────
   const live = readAgentsLive(repo);
   const useLive = live.ok;
   let fallback = false;
@@ -325,45 +563,106 @@ function buildLiveState(repo) {
     warnings.push('agents-live.json rỗng (loop đang idle hoặc chưa enter agent nào)');
   }
 
-  // worktrees sống (dùng cho cả fallback lẫn bổ sung worktree path)
+  // ── worktrees: nhận MỌI worktree (wt/*, claude/*, …) ────────────────────
   const wtRes = listWorktrees(repo);
   if (!wtRes.ok) warnings.push(wtRes.error);
   const wtByTask = new Map();
+  const worktrees = [];
   for (const w of wtRes.list) {
-    if (!w.branch || !w.branch.startsWith('wt/')) continue;
-    const parsed = taskIdFromSlug(w.branch.slice(3));
-    if (!parsed) continue;
-    wtByTask.set(parsed.id, { ...parsed, worktree: w.path, branch: w.branch, head: w.head });
+    if (!w || w.bare || w.prunable) continue;
+    let isRoot = false;
+    try { isRoot = path.resolve(w.path) === path.resolve(repo); } catch { isRoot = false; }
+    if (isRoot) continue;
+    const parsed = taskFromBranch(repo, w.branch);
+    const info = {
+      path: w.path,
+      rel: relative(repo, w.path),
+      branch: w.branch || null,
+      head: w.head || null,
+      task: parsed ? parsed.id : null,
+      mapped: !!parsed,
+    };
+    worktrees.push(info);
+    if (parsed && !wtByTask.has(parsed.id)) {
+      wtByTask.set(parsed.id, { ...parsed, worktree: w.path, branch: w.branch, head: w.head });
+    }
+  }
+
+  // ── .context riêng trong từng worktree (change-request ghi ở đây) ───────
+  const extraAgents = [];
+  const extraInProgress = [];
+  const featureRows = tasksFromWorkItems(p, repo);
+
+  for (const info of worktrees) {
+    const ctx = path.join(info.path, '.context');
+    if (!fs.existsSync(ctx)) continue;
+
+    const wf = path.join(ctx, 'progress.json');
+    if (fs.existsSync(wf)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(wf, 'utf8')) || {};
+        const nc = normalizeCompletedTasks(raw.completedTasks, warnings, `${info.rel}/completedTasks`);
+        for (const id of nc.list) {
+          if (!completed.includes(id)) completed.push(id);
+          if (!completedEntries.has(id) && nc.entries.has(id)) completedEntries.set(id, nc.entries.get(id));
+        }
+        const nb = normalizeBlockedTasks(raw.blockedTasks, warnings, `${info.rel}/blockedTasks`);
+        for (const [id, v] of nb) if (!blockedMap.has(id)) blockedMap.set(id, v);
+        const ip = taskIdOf(raw.inProgressTask) || taskIdOf(raw.activeWorkItem);
+        if (ip) extraInProgress.push({ id: ip, worktree: info.rel });
+        for (const row of tasksFromWorkItems(raw, repo)) featureRows.push(row);
+      } catch (e) {
+        warnings.push(`${info.rel}/.context/progress.json không parse được: ${e.message}`);
+      }
+    }
+
+    const alf = path.join(ctx, 'agents-live.json');
+    if (fs.existsSync(alf)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(alf, 'utf8')) || {};
+        for (const a of (Array.isArray(raw.agents) ? raw.agents : [])) {
+          if (!a || typeof a.agent !== 'string' || !a.agent) continue;
+          extraAgents.push({ ...a, worktree: a.worktree || info.rel, source: 'worktree-agents-live' });
+        }
+      } catch (e) {
+        warnings.push(`${info.rel}/.context/agents-live.json không parse được: ${e.message}`);
+      }
+    }
+
+    for (const a of agentsFromRuns(info, warnings)) extraAgents.push(a);
   }
 
   const completedSet = new Set(completed);
-  const blockedMap = new Map();
-  for (const b of blockedArr) {
-    blockedMap.set(b.task, {
-      reason: typeof b.reason === 'string' ? b.reason : 'không rõ lý do',
-      since: b.since || null,
-    });
+
+  // gộp status từ features[]/bugs[] (task chưa done vẫn phải hiện)
+  const RANK = { done: 5, running: 4, review: 3, blocked: 2, waiting: 1 };
+  const featureStatus = new Map();
+  for (const row of featureRows) {
+    if (!row.id) continue;
+    const col = statusToColumn(row.status);
+    const prev = featureStatus.get(row.id);
+    if (!prev || (RANK[col] || 0) > (RANK[prev.col] || 0)) {
+      featureStatus.set(row.id, { col, title: row.title || null, status: row.status || null });
+    }
+  }
+  for (const [id, v] of featureStatus) {
+    if (v.title && !titleMap.has(id)) titleMap.set(id, v.title);
   }
 
-  // task file → title + danh sách waiting (chỉ layer hiện tại)
-  const allDiscovered = discoverTasks(repo);
-  const discovered = allDiscovered.filter((d) => d.layer === currentLayer);
-  const titleMap = new Map();
-  for (const d of allDiscovered) if (d.title) titleMap.set(d.id, d.title);
-
   // ── agents active ────────────────────────────────────────────────────────
-  let agents = [];
-  let benchAgents = [];
+  const agents = [];
+  const benchAgents = [];
+  const seenAgents = new Set();
+
   if (useLive) {
-    const normed = live.agents.map((a) => normAgent(a, nowSec));
-    for (const a of normed) {
+    for (const a of live.agents.map((x) => normAgent(x, nowSec))) {
+      seenAgents.add(a.agent);
       if (a.phase === 'idle') benchAgents.push(a);
       else agents.push(a);
     }
-    // bổ sung worktree từ git nếu agent-live không khai
     for (const a of agents) {
       if (!a.worktree && a.task && wtByTask.has(a.task)) {
-        try { a.worktree = path.relative(repo, wtByTask.get(a.task).worktree) || '.'; } catch { /* ignore */ }
+        a.worktree = relative(repo, wtByTask.get(a.task).worktree);
       }
       if (!a.title && a.task && titleMap.has(a.task)) a.title = titleMap.get(a.task);
     }
@@ -371,34 +670,34 @@ function buildLiveState(repo) {
       if (!a.title && a.task && titleMap.has(a.task)) a.title = titleMap.get(a.task);
     }
   } else {
-    // fallback: mỗi worktree sống = 1 builder
-    const ids = [...wtByTask.keys()].sort((a, b) => a.localeCompare(b));
+    // fallback: mỗi worktree sống = 1 builder (kể cả worktree không map được task)
     let n = 0;
-    for (const id of ids) {
-      if (completedSet.has(id)) continue; // đã done thì không còn là builder
-      const w = wtByTask.get(id);
+    for (const info of worktrees) {
+      if (info.task && completedSet.has(info.task)) continue;
+      // worktree đã có agent riêng (Run Journal / .context của worktree) → không đoán trùng
+      if (extraAgents.some((a) => a && a.worktree === info.rel)) continue;
       n++;
-      const commitTs = lastCommitTs(repo, w.branch);
-      const dirTs = dirActivityTs(w.worktree);
+      const commitTs = lastCommitTs(repo, info.branch);
+      const dirTs = dirActivityTs(info.path);
       const newest = Math.max(commitTs || 0, dirTs || 0);
       const activeAgoSec = newest > 0 ? Math.max(0, Math.round(nowSec - newest)) : null;
-      let rel = w.worktree;
-      try { rel = path.relative(repo, w.worktree) || '.'; } catch { /* ignore */ }
+      const agent = info.task ? `builder-${n}` : `builder?@${path.basename(info.path)}`;
       agents.push({
-        agent: `builder-${n}`,
+        agent,
         role: 'builder',
-        task: id,
-        title: titleMap.get(id) || null,
+        task: info.task,
+        title: info.task ? (titleMap.get(info.task) || null) : null,
         phase: 'building',
-        worktree: rel,
+        worktree: info.rel,
         since: newest ? new Date(newest * 1000).toISOString() : null,
         sinceSec: null,
         activeAgoSec,
         stale: activeAgoSec != null && activeAgoSec > 600,
         guessed: true,
+        anonymous: !info.task,
       });
+      seenAgents.add(agent);
     }
-    // inProgress không có worktree → đoán đang review (kém tin cậy)
     if (inProgress && !completedSet.has(inProgress) && !wtByTask.has(inProgress)) {
       agents.push({
         agent: 'builder-active',
@@ -414,6 +713,43 @@ function buildLiveState(repo) {
         guessed: true,
       });
     }
+  }
+
+  // gộp agent đọc từ .context của worktree (change-request chạy ở worktree riêng)
+  for (const raw of extraAgents) {
+    if (!raw || typeof raw.agent !== 'string' || !raw.agent) continue;
+    if (seenAgents.has(raw.agent)) continue;
+    const a = normAgent(raw, nowSec);
+    if (a.phase === 'idle') {
+      benchAgents.push(a);
+    } else {
+      agents.push(a);
+      seenAgents.add(a.agent);
+    }
+  }
+
+  // worktree chưa map được task → vẫn hiển thị "worktree đang mở" (vô danh)
+  for (const info of worktrees) {
+    if (info.task) continue;
+    if (agents.some((a) => a.worktree === info.rel)) continue;
+    agents.push({
+      agent: `builder?@${path.basename(info.path)}`,
+      role: 'builder',
+      task: null,
+      title: null,
+      phase: 'building',
+      worktree: info.rel,
+      since: null,
+      sinceSec: null,
+      activeAgoSec: null,
+      stale: false,
+      guessed: true,
+      anonymous: true,
+    });
+  }
+  const unmapped = worktrees.filter((w) => !w.mapped && !agents.some((a) => a.worktree === w.rel)).length;
+  if (unmapped > 0) {
+    warnings.push(`${unmapped} worktree không map được task và chưa có agent nào — hiển thị worktree vô danh`);
   }
 
   // map task → agent
@@ -452,23 +788,59 @@ function buildLiveState(repo) {
     });
   };
 
-  // mọi id biết được
   const ids = new Set();
   for (const id of completed) ids.add(id);
   for (const id of blockedMap.keys()) ids.add(id);
   if (inProgress) ids.add(inProgress);
+  for (const ip of extraInProgress) ids.add(ip.id);
   for (const a of agents) if (a.task) ids.add(a.task);
   for (const id of wtByTask.keys()) ids.add(id);
+  for (const id of featureStatus.keys()) ids.add(id);
   for (const d of discovered) ids.add(d.id);
 
   for (const id of [...ids].sort((a, b) => cmpTaskId(a, b))) {
     const reviewer = reviewerByTask.get(id) || null;
     const builder = agentByTask.get(id) || null;
+    const fstat = featureStatus.get(id) || null;
 
     if (completedSet.has(id)) {
-      pushTask(id, 'done', { agent: 'merger' });
+      const e = completedEntries.get(id) || null;
+      const extra = { agent: 'merger' };
+      if (e) {
+        if (e.review) extra.review = e.review;
+        if (e.round != null) extra.round = e.round;
+        if (e.report) extra.report = e.report;
+        if (e.completedAt) extra.completedAt = e.completedAt;
+      }
+      pushTask(id, 'done', extra);
       continue;
     }
+
+    // change-request: `status` trong features[]/bugs[] quyết định CỘT; agent chỉ gắn nhãn.
+    if (fstat) {
+      const who = reviewer || builder || null;
+      const label = {
+        agent: who ? who.agent : null,
+        role: reviewer ? 'reviewer' : (builder ? 'builder' : null),
+        phase: reviewer ? 'review' : (builder ? 'building' : null),
+        worktree: who ? who.worktree : null,
+        since: who ? who.since : null,
+        via: 'features[]',
+      };
+      if (fstat.col === 'done') { pushTask(id, 'done', { ...label, agent: 'merger' }); continue; }
+      if (fstat.col === 'review') { pushTask(id, 'review', label); continue; }
+      if (fstat.col === 'running') { pushTask(id, 'running', label); continue; }
+      if (fstat.col === 'blocked') {
+        pushTask(id, 'blocked', { ...label, reason: `status: ${fstat.status || 'blocked'}` });
+        continue;
+      }
+      // status tĩnh nói "chưa tới" nhưng đang có agent làm → agent thắng
+      if (reviewer) { pushTask(id, 'review', label); continue; }
+      if (builder) { pushTask(id, 'running', label); continue; }
+      pushTask(id, 'waiting', label);
+      continue;
+    }
+
     if (reviewer) {
       pushTask(id, 'review', { agent: reviewer.agent, role: 'reviewer', phase: 'review' });
       continue;
@@ -482,9 +854,12 @@ function buildLiveState(repo) {
       pushTask(id, 'blocked', { reason: info.reason, since: info.since || null });
       continue;
     }
-    // fallback: không còn worktree, không có agent, chưa done → có thể vừa rời worktree
     if (!useLive && inProgress === id && !wtByTask.has(id)) {
       pushTask(id, 'review', { guessed: true, agent: null, role: null, phase: 'review' });
+      continue;
+    }
+    if (extraInProgress.some((x) => x.id === id)) {
+      pushTask(id, 'review', { guessed: true, via: 'worktree-progress' });
       continue;
     }
     pushTask(id, 'waiting');
@@ -514,7 +889,6 @@ function buildLiveState(repo) {
     explicit: typeof p.phase === 'string' ? p.phase : null,
   });
 
-  // giới hạn payload: done 12 gần nhất, todo 20, review đủ
   const trim = (arr, n) => (arr.length > n ? arr.slice(-n) : arr);
   const columns = {
     todo: trim(todo, 20),
@@ -536,6 +910,7 @@ function buildLiveState(repo) {
     agents,
     benchAgents,
     columns,
+    worktrees,
     merger: {
       name: 'Eve',
       active: !!mergerAgent || phase === 'merging',
@@ -552,6 +927,7 @@ function buildLiveState(repo) {
     warnings,
   });
 }
+
 
 function relative(repo, p) {
   try { return path.relative(repo, p) || '.'; } catch { return p; }
