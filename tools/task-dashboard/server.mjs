@@ -22,11 +22,13 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
+const DEFAULT_STALE_SEC = 600; // ngưỡng coi agent/worktree là đã nghỉ (không hoạt động)
+let STALE_SEC = DEFAULT_STALE_SEC;
 
 // ── args ────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const out = { port: 7788, repo: null, demo: false, host: '127.0.0.1' };
+  const out = { port: 7788, repo: null, demo: false, host: '127.0.0.1', staleSec: DEFAULT_STALE_SEC };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--demo') out.demo = true;
@@ -35,10 +37,27 @@ function parseArgs(argv) {
     else if (a === '--port') out.port = Number(argv[++i]);
     else if (a.startsWith('--port=')) out.port = Number(a.slice(7));
     else if (a === '--host') out.host = argv[++i];
+    else if (a === '--stale-sec') out.staleSec = Number(argv[++i]);
+    else if (a.startsWith('--stale-sec=')) out.staleSec = Number(a.slice(12));
     else if (a === '--help' || a === '-h') out.help = true;
     else { console.error(`⚠ tham số lạ: ${a}`); }
   }
+  if (Number.isFinite(out.staleSec) && out.staleSec > 0) STALE_SEC = out.staleSec;
   return out;
+}
+
+// Run Journal trong worktree báo có bước đang running? (tín hiệu sống dù commit cũ)
+function worktreeJournalRunning(wtPath) {
+  try {
+    const runsDir = path.join(wtPath, '.context', 'runs');
+    if (!fs.existsSync(runsDir)) return false;
+    const files = fs.readdirSync(runsDir).filter((f) => f.endsWith('.md'));
+    for (const f of files) {
+      const txt = fs.readFileSync(path.join(runsDir, f), 'utf8');
+      if (/status\s*[:=]\s*running/i.test(txt)) return true;
+    }
+  } catch { /* ignore */ }
+  return false;
 }
 
 // ── git helpers (read-only) ─────────────────────────────────────────────────
@@ -568,6 +587,7 @@ function buildLiveState(repo) {
   if (!wtRes.ok) warnings.push(wtRes.error);
   const wtByTask = new Map();
   const worktrees = [];
+  const idleWorktrees = []; // worktree còn trên đĩa nhưng không hoạt động (session đã dừng)
   for (const w of wtRes.list) {
     if (!w || w.bare || w.prunable) continue;
     let isRoot = false;
@@ -670,17 +690,33 @@ function buildLiveState(repo) {
       if (!a.title && a.task && titleMap.has(a.task)) a.title = titleMap.get(a.task);
     }
   } else {
-    // fallback: mỗi worktree sống = 1 builder (kể cả worktree không map được task)
+    // fallback: worktree ĐANG CÓ TÍN HIỆU MỚI mới coi là builder đang chạy.
+    // Worktree còn trên đĩa nhưng không hoạt động (session đã dừng) → KHÔNG vẽ thành
+    // nhân vật đang làm, mà đưa vào `idleWorktrees` (liệt kê riêng).
     let n = 0;
     for (const info of worktrees) {
       if (info.task && completedSet.has(info.task)) continue;
       // worktree đã có agent riêng (Run Journal / .context của worktree) → không đoán trùng
       if (extraAgents.some((a) => a && a.worktree === info.rel)) continue;
-      n++;
       const commitTs = lastCommitTs(repo, info.branch);
-      const dirTs = dirActivityTs(info.path);
-      const newest = Math.max(commitTs || 0, dirTs || 0);
-      const activeAgoSec = newest > 0 ? Math.max(0, Math.round(nowSec - newest)) : null;
+      const activeAgoSec = commitTs > 0 ? Math.max(0, Math.round(nowSec - commitTs)) : null;
+      // C2: "có worktree" ≠ "có agent chạy". CHỈ coi là đang chạy khi có TÍN HIỆU RÕ:
+      //  - Run Journal trong worktree báo status=running, HOẶC
+      //  - commit mới dưới ngưỡng stale (worktree vừa có commit gần đây).
+      // Mtime thư mục KHÔNG dùng (git cập nhật liên tục → luôn "mới" giả).
+      const journalRunning = worktreeJournalRunning(info.path);
+      const commitFresh = activeAgoSec != null && activeAgoSec <= STALE_SEC;
+      if (!journalRunning && !commitFresh) {
+        idleWorktrees.push({
+          worktree: info.rel,
+          branch: info.branch || null,
+          task: info.task || null,
+          activeAgoSec,
+          reason: activeAgoSec == null ? 'chưa có commit/tín hiệu' : `commit cuối ${Math.round(activeAgoSec / 60)}m trước`,
+        });
+        continue;
+      }
+      n++;
       const agent = info.task ? `builder-${n}` : `builder?@${path.basename(info.path)}`;
       agents.push({
         agent,
@@ -689,10 +725,10 @@ function buildLiveState(repo) {
         title: info.task ? (titleMap.get(info.task) || null) : null,
         phase: 'building',
         worktree: info.rel,
-        since: newest ? new Date(newest * 1000).toISOString() : null,
+        since: commitTs ? new Date(commitTs * 1000).toISOString() : null,
         sinceSec: null,
         activeAgoSec,
-        stale: activeAgoSec != null && activeAgoSec > 600,
+        stale: false,
         guessed: true,
         anonymous: !info.task,
       });
@@ -728,10 +764,28 @@ function buildLiveState(repo) {
     }
   }
 
-  // worktree chưa map được task → vẫn hiển thị "worktree đang mở" (vô danh)
+  // worktree chưa map được task: chỉ coi là agent đang làm khi CÓ TÍN HIỆU SỐNG.
+  // Không tín hiệu (stale) → vào idleWorktrees, KHÔNG vẽ thành builder đang làm (C2).
   for (const info of worktrees) {
     if (info.task) continue;
     if (agents.some((a) => a.worktree === info.rel)) continue;
+    if (idleWorktrees.some((w) => w.worktree === info.rel)) continue;
+    const commitTs = lastCommitTs(repo, info.branch);
+    const dirTs = dirActivityTs(info.path);
+    const newest = Math.max(commitTs || 0, dirTs || 0);
+    const activeAgoSec = newest > 0 ? Math.max(0, Math.round(nowSec - newest)) : null;
+    const isStale = activeAgoSec == null || activeAgoSec > STALE_SEC;
+    const journalRunning = worktreeJournalRunning(info.path);
+    if (isStale && !journalRunning) {
+      idleWorktrees.push({
+        worktree: info.rel,
+        branch: info.branch || null,
+        task: null,
+        activeAgoSec,
+        reason: activeAgoSec == null ? 'không đo được hoạt động' : `idle ${Math.round(activeAgoSec / 60)}m`,
+      });
+      continue;
+    }
     agents.push({
       agent: `builder?@${path.basename(info.path)}`,
       role: 'builder',
@@ -739,9 +793,9 @@ function buildLiveState(repo) {
       title: null,
       phase: 'building',
       worktree: info.rel,
-      since: null,
+      since: newest ? new Date(newest * 1000).toISOString() : null,
       sinceSec: null,
-      activeAgoSec: null,
+      activeAgoSec,
       stale: false,
       guessed: true,
       anonymous: true,
@@ -881,11 +935,15 @@ function buildLiveState(repo) {
     total: tasks.length,
   };
 
+  // tín hiệu merge THẬT: có branch/worktree *-integration đang tồn tại (đang gom layer)
+  const mergeSignal = worktrees.some((w) => /integration$/.test(w.branch || ''));
+
   const phase = computePhase({
     counts,
     currentLayer,
     totalLayers,
     mergerActive: !!mergerAgent,
+    mergeSignal,
     explicit: typeof p.phase === 'string' ? p.phase : null,
   });
 
@@ -911,6 +969,8 @@ function buildLiveState(repo) {
     benchAgents,
     columns,
     worktrees,
+    idleWorktrees,
+    staleSec: STALE_SEC,
     merger: {
       name: 'Eve',
       active: !!mergerAgent || phase === 'merging',
@@ -946,14 +1006,19 @@ function sortTasks(a, b) {
   return cmpTaskId(a.id, b.id);
 }
 
-function computePhase({ counts, currentLayer, totalLayers, mergerActive, explicit }) {
+function computePhase({ counts, currentLayer, totalLayers, mergerActive, mergeSignal, explicit }) {
   if (explicit) return explicit;
-  if (mergerActive) return 'merging';
+  // merging CHỈ khi có tín hiệu merge THẬT: merger agent trong agents-live, hoặc
+  // branch/worktree integration đang merge. KHÔNG suy 'merging' chỉ vì có task done.
+  if (mergerActive || mergeSignal) return 'merging';
   if (counts.building > 0) return 'building';
   if (counts.review > 0) return 'review';
-  if (counts.done > 0 && counts.blocked === 0 && counts.waiting === 0) return 'complete';
-  if (counts.done > 0) return 'merging';
+  // mọi task xong, không còn blocked/waiting → complete
+  if (counts.done > 0 && counts.blocked === 0 && counts.waiting === 0 && counts.todo === 0) return 'complete';
+  // còn task chặn → blocked (trước đây rơi nhầm vào 'merging')
   if (counts.blocked > 0) return 'blocked';
+  // còn task chờ/todo nhưng không ai đang chạy → idle (không phải merging)
+  if (counts.waiting > 0 || counts.todo > 0) return 'idle';
   if (totalLayers > 0 && currentLayer >= totalLayers) return 'complete';
   return 'idle';
 }

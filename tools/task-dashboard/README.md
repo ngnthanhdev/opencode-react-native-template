@@ -43,7 +43,7 @@ node server.mjs --repo /path/to/project --port 7789
 |---|---|---|
 | 1 | `<repo>/.context/agents-live.json` | **Chính xác** agent nào đang làm: `agent`, `role` (builder/reviewer/merger), `phase` (building/review/merging/idle), `task`, `title`, `worktree`, `since`. Do loop ghi qua `agent-live.mjs` |
 | 2 | `<repo>/.context/progress.json` | `completedTasks` (→ DONE), `blockedTasks` (→ TODO + 🔴 + lý do), `currentLayer`/`totalLayers` |
-| 3 | `git worktree list --porcelain` | **Fallback**: worktree `wt/layer-N__task-NN` còn sống = builder đang chạy task đó |
+| 3 | `git worktree list --porcelain` | **Fallback**: worktree chỉ được coi là builder đang chạy khi có **tín hiệu rõ** — Run Journal `status=running` hoặc commit cuối mới hơn `--stale-sec` (mặc định 600s). Worktree không tín hiệu → liệt kê riêng ở `idleWorktrees`, **không** vẽ thành agent |
 | 4 | `<repo>/tasks/**/*.md` | tên task + danh sách task chờ (nếu có task file) |
 | 5 | `<repo>/.context/progress.json` → `features[]` / `bugs[]` | task của change-request (`phase-N-task-NN`) — chưa done vẫn hiện ở TODO/REVIEW/DONE theo `status` |
 | 6 | `<worktree>/.context/{progress,agents-live}.json` + `<worktree>/.context/runs/*.md` | change-request chạy trong worktree riêng → gộp vào state tổng (Run Journal `status=running` = đang chạy) |
@@ -63,6 +63,17 @@ Nếu loop chưa ghi `agents-live.json` (hoặc file hỏng), dashboard **không
 Trên HUD hiện badge nhỏ **"⚠ chế độ suy luận"** (hover xem lý do) để không gây hiểu nhầm.
 
 Trong chế độ này **không phân biệt được builder vs reviewer** — task đang chạy đều vẽ là builder.
+
+**Không đoán bừa (C1/C2/C3):**
+
+- Worktree còn trên đĩa nhưng session đã dừng (commit cũ hơn `--stale-sec`, không có Run Journal `status=running`)
+  → vào `idleWorktrees`, hiện chip **"💤 N worktree nghỉ"** (hover xem danh sách), **không** thành nhân vật đang làm.
+  Không dùng mtime thư mục (git cập nhật liên tục → luôn "mới" giả).
+- Agent trong `agents-live.json` có `stale: true` → vẽ mờ/xám, không glow, không gõ phím, nhãn `idle Xm` + `(đã dừng?)`.
+- Phase `merging` **chỉ** khi có merger agent thật hoặc branch/worktree `*-integration`. Có task done mà còn blocked
+  → `blocked`; còn waiting/todo mà không ai chạy → `idle`. Không còn báo merge ảo.
+
+Ngưỡng stale đổi bằng `--stale-sec <giây>` (mặc định 600).
 
 ## Phân loại 3 cột
 
@@ -167,6 +178,8 @@ Schema:
 | `warnings` | mảng cảnh báo (hiện trên badge HUD) |
 | `version` | version server (khớp `PAGE_VERSION` trong `index.html`) |
 | `worktrees` | danh sách worktree đang mở: `{path, rel, branch, task, mapped}` |
+| `idleWorktrees` | worktree còn trên đĩa nhưng **không hoạt động**: `{worktree, branch, task, activeAgoSec, reason}` — không tính là agent |
+| `staleSec` | ngưỡng stale đang dùng (giây), đặt qua `--stale-sec` |
 
 `GET /api/health` → `{ok, version, demo, repo}`
 

@@ -31,10 +31,13 @@ builder → review → done.
 
 1. **`.context/agents-live.json`** (ưu tiên) → agent/role/phase/task/title chính xác. Do loop ghi qua `agent-live.mjs`.
 2. `.context/progress.json` → `completedTasks` (DONE), `blockedTasks` (TODO + 🔴), `inProgressTask`, layer.
-3. `git worktree list` → **fallback** khi chưa có `agents-live.json`: worktree `wt/layer-N__task-NN` = builder đang chạy.
+3. `git worktree list` → **fallback** khi chưa có `agents-live.json`: worktree CHỈ tính là builder đang chạy khi có tín hiệu rõ (Run Journal `status=running` hoặc commit cuối mới hơn `--stale-sec`, mặc định 600s). Worktree không tín hiệu (session đã dừng) → liệt kê riêng ở chip "💤 N worktree nghỉ", KHÔNG vẽ thành agent.
 
 Không có `agents-live.json` → dashboard **không crash**, tự suy luận và hiện badge **"⚠ chế độ suy luận"**
 (hover để xem lý do). Trong chế độ đó không phân biệt được builder vs reviewer.
+
+Agent `stale` vẽ mờ/xám, không gõ phím, nhãn `idle Xm` + `(đã dừng?)`. Phase không còn báo `merging` ảo:
+chỉ merge khi có merger agent thật / branch `*-integration`; done + còn blocked → `blocked`.
 
 Trang tự `fetch /api/state` mỗi 3s.
 
@@ -88,7 +91,7 @@ reviewer-1 xuất hiện → reviewer xong (biến mất) → task sang DONE →
 ## Lưu ý
 
 - Chỉ dùng `node` builtin — KHÔNG cần `npm install`.
-- Port mặc định 7788, đổi bằng `--port <N>`.
+- Port mặc định 7788, đổi bằng `--port <N>`. Ngưỡng coi agent/worktree là đã nghỉ: `--stale-sec <giây>` (mặc định 600).
 - ⚠️ **Sau khi `git pull`/sync template → PHẢI restart server dashboard** (Ctrl+C rồi chạy lại).
   Node không hot-reload: server cũ vẫn trả schema cũ → trang hiện badge đỏ "⚠ server cũ (vX) — restart dashboard".
 - Lúc chạy song song builder không ghi `progress.json` (chống race). Nếu loop chưa gọi `agent-live.mjs`
