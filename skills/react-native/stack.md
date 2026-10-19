@@ -4,11 +4,11 @@
 
 | Category | Technology | Version |
 |----------|-----------|---------|
-| Language | TypeScript | 5.x |
-| Framework | React Native (via Expo) | SDK 57 |
+| Language | TypeScript | 5.x (Strict TS API default từ SDK 58) |
+| Framework | React Native (via Expo) | SDK 58 (RN 0.88) |
 | Runtime | Expo Go / Dev Client | Latest |
-| Bundler | Metro | Built-in |
-| Navigation | React Navigation | v7 |
+| Bundler | Metro | Built-in (Rust transformer — bundle ~2x nhanh) |
+| Navigation | React Navigation | v7 / Expo Router native tabs (stable) |
 
 ## Expo Core Packages
 
@@ -81,12 +81,19 @@
 Always pin exact versions in `package.json`:
 ```json
 "dependencies": {
-  "react": "19.2.3",       // ✅ exact — theo Expo SDK 57
-  "react-native": "0.86.3"  // ✅ exact — theo Expo SDK 57
+  "expo": "58.0.14",        // ✅ exact — Expo SDK 58 stable
+  "react": "19.3.0",       // ✅ exact — theo Expo SDK 58
+  "react-native": "0.88.0", // ✅ exact — theo Expo SDK 58
+  "expo-router": "58.0.23"  // ✅ exact — core rewrite: data loaders/SSR/native tabs stable
 }
 ```
 
 ⚠️ **Dùng `npx expo install` cho native modules** — tự chọn đúng version tương thích SDK. Không tự cài version bừa.
 
-## Theo dõi (chưa nâng)
-- **Expo SDK 58** (beta 15/09/2026, chưa stable): RN 0.88 RC, iOS 27, plugin `expo-device-hub`, nền tảng SwiftPM. **Chưa nâng stack** — khi stable (dự kiến cuối tháng 10) cập nhật bảng Core + `e2e-maestro.md` (EAS Observe giờ đã chạy trên SDK 57+).
+## SDK 58 — điểm cần lưu ý (stable 07/10/2026)
+- **Strict TS API default**: type-check chặt hơn, sửa lỗi type ẩn trước khi nâng.
+- **Expo Router core rewrite**: data loaders, SSR, native tabs stable — ưu tiên native tabs thay custom tab bar.
+- **iOS 27 App Intents + Android widgets** native support.
+- **Metro Rust transformer** (bundle ~2x nhanh); AGP 9.
+- **EAS CLI v24** đổi scheme một số lệnh — cập nhật lại `.devops/templates/*` khi build thực tế.
+- ⚠️ Luôn `npx expo install` để chọn version native modules khớp SDK 58.
