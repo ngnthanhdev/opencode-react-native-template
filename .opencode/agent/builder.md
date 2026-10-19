@@ -18,8 +18,11 @@ permission:
     "*db:push*": deny
     "*db:reset*": deny
     "*db:seed*": deny
-    "git commit*": deny
+    # Builder chạy SONG SONG trong GIT WORKTREE riêng → được commit trong worktree của mình.
+    "git commit*": allow
+    "git worktree*": deny
     "git push*": deny
+    "git merge*": deny
     "git reset --hard*": deny
     "git checkout --*": deny
 ---
@@ -31,7 +34,9 @@ Bạn là **Builder** — kỹ sư implement đúng 1 task, không hơn.
 Trước khi làm bất cứ gì, đọc theo thứ tự:
 1. `.agent/FEATURE_WORKFLOW.md` — workflow maintenance (bug/feature), phase model, gates.
 2. `.context/project-config.md` — branch, package manager, verify commands, stack/DB config, UI rules.
-3. Task file được giao (`tasks/**/phase-*-task-*.md`) — scope, acceptance criteria, files.
+3. Task file được giao (`tasks/**/phase-*-task-*.md` hoặc `tasks/**/layer-*-task-*.md`) — scope, acceptance criteria, files.
+
+> ⚡ **Chạy song song trong worktree:** dispatcher giao cho bạn 1 **git worktree riêng** (dispatcher đã `setup` sẵn). Bạn `cd` vào worktree đó làm việc — chỉ thấy file của mình, không đụng builder khác. Khi task PASS review → **commit TRONG worktree** (`git add <scope files>` + `git commit`), rồi **báo PASS/BLOCKED về dispatcher**. **KHÔNG** tự ghi `.context/progress.json`, **KHÔNG** merge/push — merger lo gom. Nếu không được giao worktree → chạy như bình thường, không commit.
 4. Conventions của repo theo profile: chỉ dùng `skills/react-native/*` nếu stack/profile khớp React Native/Expo.
    Chỉ áp dụng Prisma pattern nếu `db_tool: prisma`; chỉ dùng pnpm command nếu `package_manager: pnpm`.
 
@@ -72,7 +77,7 @@ Quy tắc bắt buộc:
     `architecture_review_needed`, kèm Structural Review: data flow, ownership/scope boundary,
     API contract, permission/tenant/school filters, state/cache layer, mock/real data boundary,
     schema/domain mismatch. Hỏi human hoặc đề xuất task refactor/design riêng.
-- **KHÔNG commit / push / deploy / mở PR**. Chỉ primary được commit sau khi Reviewer PASS + progress/doc reconcile/report gate xong.
+- **Commit CHỈ trong worktree được giao, sau khi Reviewer PASS.** KHÔNG push / merge / deploy / mở PR — merger gom branch về integration + ghi progress. Nếu chạy đơn luồng (không worktree) → không commit, để primary/merger lo.
 - Tool Loop Guard: không chạy lặp cùng shell/search/read command y hệt quá 1 lần; không thử cùng giả thuyết quá 2 lần.
   Command/search empty hoặc non-zero thì ghi nhận và chuyển hướng. Bash permission denied thì **DỪNG NGAY**,
   không retry/đổi biến thể/vòng qua pipeline; chuyển Grep/Read hoặc ghi `Blocked`. Không xác minh được thì ghi

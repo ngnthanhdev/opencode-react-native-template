@@ -98,7 +98,7 @@ node /path/to/template/scripts/template-sync.mjs --project /path/to/project
 
 ## Overview
 
-This template provides a **multi-agent workflow** for **mobile repos that already have code** (bug / feature / update). Start with `/start` (type once, runs continuously): read spec → brainstorm (clarify requirements + config) → design (tokens + screen specs) → graph (split layers/tasks) → loop executes tasks → `/change` for all subsequent changes (the `change-request` agent). `AGENTS.md` routes every request; specialized subagents handle build, independent review, spec validation, and close-out.
+This template provides a **multi-agent workflow** for **mobile repos that already have code** (bug / feature / update). Start with `/start` (type once, runs continuously): read spec → brainstorm (clarify requirements + config) → design (tokens + screen specs) → graph (split layers/tasks) → loop executes independent tasks **in parallel** (worktree-per-task + merger) → `/change` for all subsequent changes (the `change-request` agent). `AGENTS.md` routes every request; specialized subagents handle build, independent review, spec validation, and close-out.
 
 **Key features:**
 - 🧭 **Intent router** — `AGENTS.md` classifies every request (bug / sweep / feature / review / research) before any code is touched
@@ -194,7 +194,7 @@ project-template/
 │   ├── brainstorm.md             ← ✅ Read spec/code → clarify requirements + set config → .context/project-config.md
 │   ├── design.md                 ← Design Agent: design tokens + screen specs (before layer split)
 │   ├── graph.md                  ← Split spec/design → layers + tasks (dependency order)
-│   ├── loop.md                   ← Execute tasks (ReAct pattern)
+│   ├── loop.md                   ← Execute tasks in parallel (ReAct, worktree-per-task + merger)
 │   ├── devops.md                 ← Git init, EAS build, store deploy
 │   ├── rollback.md               ← Git checkpoint + revert strategy
 │   ├── blackboard.md             ← Shared state (.context/progress.json is the source of truth)
@@ -382,12 +382,15 @@ The template ships with curated workflow skills (curated from well-known open-so
 └─ 4. Graph        → tasks/<slug>/layer-N-task-NN.md + layer-plan diagram                ⏸ approve plan
     │
     ▼  (auto-continues after you reply "ok")
-Loop Agent — execute each task (ReAct)
-├─ 5a Builder   code + test (TDD)
-├─ 5b Observe   tsc / lint / jest / expo build
-├─ 5c Error Analyzer → fix → retry (max 3)
-├─ 5d Reviewer  independent review (different model)
-└─ 5e Close-out doc reconcile → progress → commit
+Loop Agent — execute tasks in PARALLEL (ReAct per task, worktree-per-task)
+├─ Dispatcher  plan --layer N → split into parallel waves (by file independence)
+├─ per task (SPAWNED IN PARALLEL, each in its own git worktree):
+│    ├─ 5a Builder   code + test (TDD)
+│    ├─ 5b Observe   tsc / lint / jest / expo build
+│    ├─ 5c Error Analyzer → fix → retry (max 3)
+│    ├─ 5d Reviewer  independent review (different model)
+│    └─ commit inside worktree
+└─ 5e Merger    merge all task branches → verify whole layer → write progress.json once → cleanup
     │
     ▼
 ⏸ Human Checkpoint → next layer (Layer N+1 only unlocks when Layer N PASSes + you approve)

@@ -43,7 +43,11 @@ Chạy **Project Start** — chuỗi khởi tạo **chạy liên tục** cho rep
    → ⏸ CHECKPOINT: duyệt layer plan        → reply "ok" → tự chạy tiếp
 
 5. LOOP         (tự chạy tiếp sau khi duyệt plan)
-   → .agent/loop.md thực thi từng task → gọi subagent `builder` (.opencode/agent/builder.md)
+   → .agent/loop.md thực thi task theo layer, SONG SONG (worktree-per-task — xem § Parallel Execution Model)
+     → dispatcher: `node scripts/parallel-dispatch.mjs plan --layer N` → chia wave
+     → mỗi task 1 **git worktree riêng** → spawn N subagent `builder` song song, mỗi con chạy FULL loop
+     → cả layer xong → 1 **merger**: `merge --layer N` → verify tổng thể → ghi progress.json 1 lần → cleanup
+   (chi tiết từng task:) → gọi subagent `builder` (.opencode/agent/builder.md)
      → PASS → gọi subagent `reviewer` (.opencode/agent/reviewer.md) review độc lập
      → FAIL → gọi `error-analyzer` → fix → retry (max 3)
    → DevOps (.agent/devops.md) lo git init/CI-CD/deploy ở layer 0 + sau mỗi layer

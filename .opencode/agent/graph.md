@@ -24,4 +24,6 @@ Wrapper gọi `.agent/graph.md`. Chia công việc thành layer/task theo depend
 5. Update `.context/progress.json` (totalLayers/currentLayer/completedTasks/inProgressTask).
 6. **DỪNG chờ user duyệt plan** (human checkpoint) trước khi loop chạy layer 0.
 
+> ⚡ Task trong cùng layer độc lập → loop sẽ chạy chúng **SONG SONG** theo worktree-per-task + merger (xem `.agent/loop.md` § Parallel Execution Model). Khi chia task, điền đầy đủ **Files to Create/Modify** cho mỗi task — dispatcher dựa vào đó để xếp wave (task trùng file → tách wave).
+
 **Attribution:** completion report trả về mở đầu bằng `Agent: graph`.
