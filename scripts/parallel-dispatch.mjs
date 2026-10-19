@@ -72,34 +72,96 @@ function die(msg) { console.error(`✖ ${msg}`); process.exit(1) }
 
 // ── project-config: hook worktree (optional) ────────────────────────────────
 // Đọc `.context/project-config.json` nếu có (ưu tiên), sau đó tới key trong
-// `.context/project-config.md`. Giá trị placeholder `<...>` / null / rỗng = bỏ qua.
+// `.context/project-config.md` (key đầu tiên thắng). Hỗ trợ cả:
+//   key: "lệnh một dòng"
+//   key: |
+//     lệnh dòng 1
+//     lệnh dòng 2
+// Giá trị placeholder `<...>` / null / rỗng = coi như chưa cấu hình.
+const HOOK_KEYS = ['worktree_setup_cmd', 'worktree_teardown_cmd']
+
+function indentWidth(s) {
+  return String(s).replace(/\t/g, '  ').length
+}
+
+function cleanScalar(raw) {
+  let v = String(raw).trim()
+  if (/^['"]/.test(v)) {
+    // chuỗi có quote: lấy đúng cặp quote đầu tiên, phần sau (kể cả `# comment`) bỏ
+    const q = v[0]
+    const end = v.indexOf(q, 1)
+    v = end > 0 ? v.slice(1, end).trim() : ''
+  } else {
+    v = v.replace(/\s+#.*$/, '').trim()
+  }
+  if (!v || /^<.*>$/.test(v) || /^(null|none|~)$/i.test(v)) return ''
+  return v
+}
+
+/** Parse 2 hook key từ markdown (hỗ trợ block scalar `|` / `>`). */
+function parseHookKeysFromMarkdown(txt) {
+  const lines = String(txt).split('\n')
+  const out = {}
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^([ \t]*)(worktree_setup_cmd|worktree_teardown_cmd)[ \t]*:[ \t]*(.*)$/)
+    if (!m) continue
+    const key = m[2]
+    // key đầu tiên CÓ GIÁ TRỊ thắng; khai báo rỗng/placeholder không giữ chỗ
+    if (out[key]) continue
+    const keyIndent = indentWidth(m[1])
+    const rest = m[3].trim()
+
+    // block scalar: "|" / "|-" / ">" / ">-" (kèm comment phía sau)
+    if (/^[|>][+-]?\s*(#.*)?$/.test(rest)) {
+      const buf = []
+      let j = i + 1
+      for (; j < lines.length; j++) {
+        const ln = lines[j]
+        if (!ln.trim()) { buf.push(''); continue }
+        if (indentWidth(ln.match(/^[ \t]*/)[0]) <= keyIndent) break
+        buf.push(ln)
+      }
+      while (buf.length && !buf[buf.length - 1].trim()) buf.pop()
+      const minIndent = buf.filter((l) => l.trim()).reduce(
+        (min, l) => Math.min(min, indentWidth(l.match(/^[ \t]*/)[0])), Infinity,
+      )
+      const body = buf
+        .map((l) => (l.trim() ? l.replace(new RegExp(`^[ \\t]{0,${minIndent === Infinity ? 0 : minIndent}}`), '') : ''))
+        .join('\n')
+        .replace(/\s+$/, '')
+      if (body.trim()) out[key] = body
+      i = j - 1
+      continue
+    }
+
+    const scalar = cleanScalar(rest)
+    if (scalar) out[key] = scalar
+  }
+  return out
+}
+
 function readProjectConfig() {
   const cfg = {}
   const jsonPath = path.join(ROOT, '.context', 'project-config.json')
   if (fs.existsSync(jsonPath)) {
     try {
       const raw = JSON.parse(fs.readFileSync(jsonPath, 'utf8')) || {}
-      for (const k of ['worktree_setup_cmd', 'worktree_teardown_cmd']) {
+      for (const k of HOOK_KEYS) {
         if (typeof raw[k] === 'string' && raw[k].trim()) cfg[k] = raw[k].trim()
       }
     } catch (e) {
       console.error(`⚠ project-config.json không parse được: ${e.message} — bỏ qua hook`)
     }
   }
+
   const mdPath = path.join(ROOT, '.context', 'project-config.md')
   if (fs.existsSync(mdPath)) {
     let txt = ''
     try { txt = fs.readFileSync(mdPath, 'utf8') } catch { txt = '' }
-    for (const k of ['worktree_setup_cmd', 'worktree_teardown_cmd']) {
+    const fromMd = parseHookKeysFromMarkdown(txt)
+    for (const k of HOOK_KEYS) {
       if (cfg[k]) continue
-      const m = txt.match(new RegExp(`^[ \\t]*${k}[ \\t]*:[ \\t]*(.+)$`, 'm'))
-      if (!m) continue
-      let v = m[1].trim()
-      // bỏ comment cuối dòng (chỉ khi không nằm trong quote)
-      if (!/^['"]/.test(v)) v = v.replace(/\s+#.*$/, '').trim()
-      v = v.replace(/^['"]|['"]$/g, '').trim()
-      if (!v || /^<.*>$/.test(v) || /^(null|none|~)$/i.test(v)) continue
-      cfg[k] = v
+      if (fromMd[k]) cfg[k] = fromMd[k]
     }
   }
   return cfg
