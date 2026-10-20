@@ -22,7 +22,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const VERSION = '2.2.0';
+const VERSION = '2.3.0';
 const DEFAULT_STALE_SEC = 600; // ngưỡng coi agent/worktree là đã nghỉ (không hoạt động)
 let STALE_SEC = DEFAULT_STALE_SEC;
 
@@ -292,12 +292,25 @@ function normAgent(a, nowSec) {
     const t = Date.parse(a.since);
     if (Number.isFinite(t)) sinceSec = Math.max(0, Math.round(nowSec - t / 1000));
   }
+  // v2.3: nhận diện DISPATCHER/LOOP. agent-live.mjs cho phép role tùy ý → GIỮ NGUYÊN
+  // dispatcher/loop thay vì ép về builder. Tên agent chứa 'dispatch'/'loop' cũng nhận.
+  const rawName = String(a.agent || '');
+  let role = a.role ? String(a.role).trim() : '';
+  if (role === 'loop') role = 'dispatcher';
+  if (!role) role = /dispatch|loop/i.test(rawName) ? 'dispatcher' : 'builder';
+  const rawPhase = a.phase ? String(a.phase).trim() : '';
+  let phase;
+  if (rawPhase && rawPhase !== 'building') phase = rawPhase;
+  else if (role === 'dispatcher') phase = 'orchestrating';
+  else if (role === 'merger') phase = 'merging';
+  else if (role === 'reviewer') phase = 'review';
+  else phase = rawPhase || 'building';
   const out = {
     agent: a.agent,
-    role: a.role || 'builder',
+    role,
     task: a.task || null,
     title: a.title || null,
-    phase: a.phase || 'building',
+    phase,
     worktree: a.worktree || null,
     since: a.since || null,
     sinceSec,
@@ -1058,6 +1071,11 @@ function buildDemoState() {
   const now = Date.now() / 1000;
   const iso = (agoSec) => new Date((now - agoSec) * 1000).toISOString();
   const baseDone = ['layer-0/task-01', 'layer-0/task-02', 'layer-0/task-03', 'layer-1/task-01'];
+  // v2.3: dispatcher/loop luôn có mặt trên sàn (điều phối) — hiển thị ROLE badge "LOOP"
+  const loopAgent = {
+    agent: 'dispatcher', role: 'dispatcher', task: null, title: null,
+    phase: 'orchestrating', worktree: null, since: iso(600), sinceSec: 600,
+  };
 
   let scene;
   if (t < 14) scene = 'build';
@@ -1089,6 +1107,8 @@ function buildDemoState() {
   });
 
   const doneIds = [...baseDone];
+
+  agents.push(loopAgent);
 
   if (scene === 'build') {
     agents.push(

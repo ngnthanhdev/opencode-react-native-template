@@ -2,14 +2,23 @@
 
 Xem trạng thái build loop dưới dạng **văn phòng isometric 2.5D** kiểu *Game Dev Story*.
 
-- Mỗi **builder** đang chạy = 1 nhân vật ngồi bàn gõ phím (áo cyan). Trên đầu hiện **tên agent + task**.
-- **Reviewer** ngồi bàn riêng, áo tím / tóc vàng → phân biệt bằng mắt.
+- Mỗi agent đang chạy = 1 nhân vật ngồi bàn gõ phím. Trên đầu hiện **ROLE badge** (🔨 BUILDER / 🔎 REVIEWER / 🔀 MERGE / 🧭 LOOP), **tên agent**, **task đang làm** (đậm + dấu ▸) và một dòng **phase** nhỏ ("đang build" / "đang review" / "điều phối" / "merge").
+- **Reviewer** ngồi bàn riêng, áo tím / tóc vàng + kính lúp 🔍 lơ lửng → phân biệt bằng mắt.
+- **Dispatcher/loop** đứng bàn điều phối giữa phòng, vòng tròn xoay quanh; nhận diện qua role `dispatcher`/`loop` trong `agents-live.json` (hoặc tên agent chứa `dispatch`/`loop`) — **không** bị ép về builder.
 - **Eve (bước merge)** đứng giữa phòng, sáng aura khi tới pha merge — **hình ảnh trực quan của bước merge**, không phải một agent con (không có `merger.md`; merge do dispatcher chạy `scripts/parallel-dispatch.mjs merge` + `cleanup`).
 - Agent **idle** ngồi khu nghỉ (sofa ☕ góc phòng).
 - Agent **release** → fade out, biến mất khỏi scene.
 - **3 bảng TODO / REVIEW / DONE** hai bên: card tự trượt sang cột mới khi task đổi trạng thái.
 
 **Chỉ đọc. Không ghi, không sửa, không can thiệp loop.**
+
+## v2.3 — role badge + task nổi bật + hiệu ứng theo role
+
+- **Role badge** màu riêng theo role: 🔨 BUILDER (cyan), 🔎 REVIEWER (violet), 🔀 MERGE (vàng), 🧭 LOOP (lavender).
+- **Task nổi bật**: task đang làm đậm hơn, có dấu ▸; nhân vật active không bị mờ; dòng phase nhỏ dưới task.
+- **Hiệu ứng**: reviewer có kính lúp 🔍 `@keyframes magnify`; builder có ký tự code bay lên (`codeRise`) + typing; dispatcher có vòng tròn xoay (`loopSpin`); merger giữ aura + thêm sparkle.
+- **Đổi task** → namebadge flash nhẹ (`@keyframes taskSwitch` ~0.6s) để thấy task vừa chuyển.
+- Server nhận diện role `dispatcher`/`loop` (giữ nguyên, phase `orchestrating`); `agent-live.mjs` cho phép `--role dispatcher --phase orchestrating`.
 
 ## Chạy demo (không cần project)
 

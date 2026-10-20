@@ -20,8 +20,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-const ROLES = new Set(['builder', 'reviewer', 'merger']);
-const PHASES = new Set(['building', 'review', 'merging', 'idle']);
+const ROLES = new Set(['builder', 'reviewer', 'merger', 'dispatcher']);
+const PHASES = new Set(['building', 'review', 'merging', 'orchestrating', 'idle']);
 
 // ── args ────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
@@ -171,8 +171,8 @@ function main() {
   if (help || cmd === 'help') {
     console.log(`agent-live — ghi .context/agents-live.json (file hiển thị cho task-dashboard)
 
-  node agent-live.mjs enter --agent <id> --role <builder|reviewer|merger> \\
-      [--task <layer-N/task-NN>] [--title "<...>"] --phase <building|review|merging> \\
+  node agent-live.mjs enter --agent <id> --role <builder|reviewer|merger|dispatcher> \\
+      [--task <layer-N/task-NN>] [--title "<...>"] --phase <building|review|merging|orchestrating> \\
       [--worktree <path>] [--repo <path>]
   node agent-live.mjs leave --agent <id> [--repo <path>]
   node agent-live.mjs clear [--repo <path>]
@@ -194,13 +194,13 @@ function main() {
     }
     const role = typeof args.role === 'string' ? args.role : 'builder';
     if (!ROLES.has(role)) {
-      warn(`--role không hợp lệ: ${role} (chỉ builder|reviewer|merger)`);
+      warn(`--role không hợp lệ: ${role} (chỉ builder|reviewer|merger|dispatcher)`);
       return 1;
     }
     let phase = typeof args.phase === 'string' ? args.phase : null;
-    if (!phase) phase = role === 'merger' ? 'merging' : role === 'reviewer' ? 'review' : 'building';
+    if (!phase) phase = role === 'merger' ? 'merging' : role === 'dispatcher' ? 'orchestrating' : role === 'reviewer' ? 'review' : 'building';
     if (!PHASES.has(phase)) {
-      warn(`--phase không hợp lệ: ${phase} (chỉ building|review|merging|idle)`);
+      warn(`--phase không hợp lệ: ${phase} (chỉ building|review|merging|orchestrating|idle)`);
       return 1;
     }
     const task = typeof args.task === 'string' ? args.task : null;

@@ -11,9 +11,10 @@ Chạy **Task Dashboard v2** — giao diện văn phòng isometric 2.5D xem tr�
 Tool **độc lập, chỉ đọc** ở `tools/task-dashboard/`. Không ghi, không sửa, không can thiệp loop.
 
 **Văn phòng sống động:**
-- Mỗi agent đang active = 1 nhân vật **ngồi bàn gõ phím**, trên đầu hiện **tên agent + task** (`builder-1`, `reviewer-1`…).
+- Mỗi agent đang active = 1 nhân vật **ngồi bàn gõ phím**, trên đầu hiện **ROLE badge** (🔨 BUILDER / 🔎 REVIEWER / 🔀 MERGE / 🧭 LOOP) + **tên agent** + **task đang làm** (nổi bật, có dấu ▸ + dòng phase nhỏ "đang build" / "đang review" / "điều phối" / "merge").
 - **Builder** áo cyan, **reviewer** áo tím/tóc vàng — phân biệt bằng mắt.
-- **Eve (merge)** đứng giữa phòng, aura sáng khi tới pha merge — đây là **hình ảnh trực quan của bước merge**, không phải một agent con.
+- **Dispatcher/loop** (🧭 LOOP, lavender) đứng bàn điều phối giữa phòng, vòng tròn xoay quanh. Nhận diện qua role `dispatcher`/`loop` trong `agents-live.json` (hoặc tên agent chứa `dispatch`/`loop`) — KHÔNG bị ép về builder.
+- **Eve (merge)** đứng giữa phòng, aura sáng + sparkle khi tới pha merge — đây là **hình ảnh trực quan của bước merge**, không phải một agent con.
 - Agent **idle** ngồi khu nghỉ (sofa ☕ góc phòng).
 - Agent **release** → fade out, biến mất khỏi scene.
 
@@ -50,6 +51,9 @@ Helper có sẵn trong `tools/task-dashboard/agent-live.mjs` (atomic + chịu gh
 node tools/task-dashboard/agent-live.mjs enter --agent builder-1 --role builder \
   --task layer-1/task-02 --title "REST API /users" --phase building \
   --worktree .worktrees/wt/layer-1__task-02
+
+# dispatcher/loop tự khai báo (hiện role badge 🧭 LOOP)
+node tools/task-dashboard/agent-live.mjs enter --agent dispatcher --role dispatcher --phase orchestrating
 
 # builder PASS → release builder + reviewer nhận task
 node tools/task-dashboard/agent-live.mjs leave --agent builder-1

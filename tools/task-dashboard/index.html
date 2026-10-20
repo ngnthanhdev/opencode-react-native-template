@@ -185,6 +185,67 @@
   .chr.idle-stale .bob{animation-duration:5s}
   .chr.idle-stale .namebadge{opacity:.8}
   .chr.idle-stale .namebadge .nm{color:#9aa0b5}
+
+  /* ── v2.3: ROLE BADGE ─────────────────────────────────────────────── */
+  .namebadge .role-badge{
+    display:inline-flex; align-items:center; gap:3px; margin-bottom:2px;
+    padding:1px 6px; border-radius:999px; font-size:8px; font-weight:700; letter-spacing:1px;
+    background:rgba(63,224,255,.14); border:1px solid rgba(63,224,255,.5); color:#9BEDFF;
+  }
+  .namebadge.role-builder .role-badge{background:rgba(63,224,255,.14); border-color:rgba(63,224,255,.55); color:#9BEDFF}
+  .namebadge.role-reviewer .role-badge{background:rgba(122,92,255,.18); border-color:rgba(217,188,255,.6); color:#D9BCFF}
+  .namebadge.role-merger .role-badge{background:rgba(255,159,92,.18); border-color:rgba(255,198,92,.65); color:#FFD08A}
+  .namebadge.role-dispatcher .role-badge{background:rgba(201,184,255,.16); border-color:rgba(201,184,255,.6); color:#D6C9FF}
+  .chr.reviewer .namebadge{border-color:rgba(201,166,255,.6); box-shadow:0 6px 18px rgba(0,0,0,.55),0 0 14px rgba(201,166,255,.2)}
+  .chr.reviewer .namebadge .nm{color:#D9BCFF}
+  .chr.dispatcher{filter:drop-shadow(0 0 10px rgba(201,184,255,.34))}
+  .chr.dispatcher .namebadge{border-color:rgba(201,184,255,.62); box-shadow:0 6px 18px rgba(0,0,0,.55),0 0 14px rgba(201,184,255,.22)}
+  .chr.dispatcher .namebadge .nm{color:#D6C9FF}
+  .chr.merger .namebadge{border-color:rgba(255,198,92,.62); box-shadow:0 6px 18px rgba(0,0,0,.55),0 0 14px rgba(255,198,92,.22)}
+  .chr.merger .namebadge .nm{color:#FFD08A}
+
+  /* ── v2.3: TASK NỔI BẬT + PHASE nhỏ dưới task ──────────────────── */
+  .namebadge .tk{
+    display:block; opacity:1; font-weight:700; font-size:9.5px; color:#EAF6FF;
+    text-shadow:0 0 9px rgba(63,224,255,.55);
+  }
+  .namebadge .tk .tik{color:#63E9FF; margin-right:3px}
+  .chr.idle-stale .namebadge .tk{font-weight:600; color:#8f96ad; text-shadow:none; opacity:.85}
+  .namebadge .ph{display:block; font-size:8px; letter-spacing:.6px; color:#7fd6ff; opacity:.95; margin-top:1px; font-style:italic}
+  .namebadge.role-reviewer .ph{color:#CBA6FF}
+  .namebadge.role-merger .ph{color:#FFC98A}
+  .namebadge.role-dispatcher .ph{color:#C9B8FF}
+  .chr.idle-stale .namebadge .ph{color:#8b90a8}
+
+  /* ── v2.3: HIỆU ỨNG theo role + đổi task ───────────────────────── */
+  .chr.flash-switch .namebadge{animation:taskSwitch .6s cubic-bezier(.2,1.3,.4,1) 1}
+  .chr.flash-switch .bob{animation:bobSwitch .6s ease-out 1}
+  .lens{position:absolute; left:50%; top:-15px; width:15px; height:15px; opacity:0; z-index:9; pointer-events:none}
+  .lens .magnify{font-size:13px; filter:drop-shadow(0 0 6px rgba(201,166,255,.8))}
+  .lens::after{
+    content:""; position:absolute; left:2px; top:2px; width:11px; height:11px; border-radius:50%;
+    background:radial-gradient(circle, rgba(201,166,255,.35), transparent 70%);
+  }
+  .chr.reviewer .lens{animation:magnify 2.4s ease-in-out infinite}
+  .chr.bubble .codebits{position:absolute; left:50%; bottom:70px; width:40px; height:0; transform:translateX(-50%); pointer-events:none}
+  .chr.bubble .codebits i{position:absolute; font-family:var(--mono); font-size:8.5px; font-style:normal; color:#8CEAFF; opacity:0; text-shadow:0 0 7px rgba(63,224,255,.75); animation:codeRise 2.4s linear infinite}
+  .chr.bubble .codebits i:nth-child(1){left:-8px; animation-delay:.1s}
+  .chr.bubble .codebits i:nth-child(2){left:2px; animation-delay:1s}
+  .chr.bubble .codebits i:nth-child(3){left:12px; animation-delay:1.8s}
+  .chr.dispatcher .loopring{
+    position:absolute; left:50%; bottom:-3px; width:92px; height:38px; transform:translateX(-50%);
+    border-radius:50%; opacity:0; pointer-events:none;
+    border:2px dashed rgba(201,184,255,.75);
+    background:conic-gradient(from 0deg, rgba(201,184,255,.32), rgba(63,224,255,.08), rgba(201,184,255,.32));
+    animation:loopSpin 3.6s linear infinite;
+  }
+  .chr.dispatcher .loopring::after{
+    content:"↻"; position:absolute; right:-5px; top:-7px; font-size:11px; color:#D6C9FF;
+    text-shadow:0 0 8px rgba(201,184,255,.9);
+  }
+  .chr.dispatcher:not(.idle-stale) .loopring{opacity:.92}
+  .benchchr .role-badge{font-size:7.5px; padding:0 4px}
+  .benchchr .lens,.benchchr .codebits,.benchchr .loopring{display:none}
   .bob{position:absolute;left:0;bottom:0;width:70px;height:76px;animation:bob 3.4s ease-in-out infinite}
   .chr.typing .bob{animation-duration:2s}
   .sprite{position:absolute; left:50%; bottom:0; width:56px; height:70px; transform:translateX(-50%)}
@@ -353,6 +414,8 @@
   #eve .spark.s1{right:-2px;top:18px}
   #eve .spark.s2{left:-4px;top:40px;animation-delay:.9s}
   #eve .spark.s3{right:6px;top:64px;animation-delay:1.6s}
+  #eve .spark.s4{left:2px;top:78px;animation-delay:2.1s}
+  #eve .spark.s5{right:2px;top:96px;animation-delay:1.1s}
   #eve .label{
     position:absolute; left:50%; bottom:-16px; transform:translateX(-50%);
     font-family:var(--mono); font-size:9px; letter-spacing:1.5px; color:var(--lav);
@@ -444,6 +507,15 @@
   @keyframes sparkle{0%{opacity:0;transform:translateY(6px) scale(.6)}25%{opacity:1}70%{opacity:.8}100%{opacity:0;transform:translateY(-14px) scale(1.1)}}
   @keyframes screenPulse{0%,100%{opacity:.5}50%{opacity:1}}
   @keyframes tdot{0%,100%{opacity:.25}50%{opacity:1}}
+  @keyframes magnify{0%,100%{transform:translateX(-2px) translateY(0) rotate(-6deg)}50%{transform:translateX(4px) translateY(-2px) rotate(6deg)}}
+  @keyframes taskSwitch{
+    0%{transform:translateX(-50%) translateY(0) scale(1)}
+    35%{transform:translateX(-50%) translateY(-3px) scale(1.12); box-shadow:0 0 20px rgba(63,224,255,.75)}
+    100%{transform:translateX(-50%) translateY(0) scale(1)}
+  }
+  @keyframes bobSwitch{0%{transform:translateY(0)}40%{transform:translateY(-4px)}100%{transform:translateY(0)}}
+  @keyframes codeRise{0%{opacity:0;transform:translateY(6px)}25%{opacity:1}75%{opacity:.7}100%{opacity:0;transform:translateY(-16px)}}
+  @keyframes loopSpin{to{transform:translateX(-50%) rotate(360deg)}}
   .monitor.on .screen{animation:screenPulse 2.4s ease-in-out infinite}
   .monitor.on .glow{opacity:.5;animation:screenPulse 2.4s ease-in-out infinite}
   .monitor .glow{opacity:0;transition:opacity .4s}
@@ -617,7 +689,7 @@
   'use strict';
 
   // Khớp VERSION trong server.mjs. Lệch → server đang chạy bản cũ (Node không hot-reload).
-  const PAGE_VERSION = '2.2.0';
+  const PAGE_VERSION = '2.3.0';
 
   // ── hình học isometric ────────────────────────────────────────────────
   const TW = 118, TH = 59;
@@ -890,6 +962,8 @@
       <div class="spark s1">✦</div>
       <div class="spark s2">✧</div>
       <div class="spark s3">✦</div>
+      <div class="spark s4">✧</div>
+      <div class="spark s5">✦</div>
       <div class="body">
         <div class="leg l"></div><div class="leg r"></div>
         <div class="shoe l"></div><div class="shoe r"></div>
@@ -910,6 +984,21 @@
   const benchLayer = document.getElementById('benchLayer');
   const charEls = new Map();     // agent id -> el
   const deskOwner = new Map();   // agent id -> desk index
+  const taskMemo = new Map();    // agent id -> task lần render trước (phát hiện đổi task)
+  // v2.3: nhãn role hiển thị
+  const ROLE_INFO = {
+    builder: { label: '🔨 BUILDER' },
+    reviewer: { label: '🔎 REVIEWER' },
+    merger: { label: '🔀 MERGE' },
+    dispatcher: { label: '🧭 LOOP' }
+  };
+  // v2.3: phase → text phụ dưới task
+  const PHASE_TEXT = {
+    building: 'đang build', review: 'đang review', merging: 'merge',
+    orchestrating: 'điều phối', idle: 'chờ'
+  };
+  // v2.3: dispatcher/loop đứng bàn điều phối riêng (giữa hàng dưới)
+  const LOOP_DESK = 4;
 
   function deskPoint(i) {
     const d = DESKS[i];
@@ -933,15 +1022,23 @@
   function createChar(agent, idx, kind) {
     const el = document.createElement('div');
     const p = PALETTE[idx % PALETTE.length];
-    const reviewer = agent.role === 'reviewer';
-    el.className = 'chr ' + (kind === 'bench' ? 'benchchr' : (reviewer ? 'reviewer' : 'builder'));
+    const role = agent.role || 'builder';
+    const reviewer = role === 'reviewer';
+    const dispatcher = role === 'dispatcher';
+    const merger = role === 'merger';
+    el.className = 'chr ' + (kind === 'bench' ? 'benchchr' : (dispatcher ? 'dispatcher' : (merger ? 'merger' : (reviewer ? 'reviewer' : 'builder'))));
     el.dataset.agent = agent.agent;
     el.innerHTML = `
-      <div class="namebadge">
+      <div class="namebadge role-${role}">
+        <span class="role-badge"></span>
         <span class="nm"></span>
         <span class="tk"></span>
         <span class="tl"></span>
+        <span class="ph"></span>
       </div>
+      <div class="lens"><span class="magnify">🔍</span></div>
+      <div class="loopring"></div>
+      <div class="codebits"><i>&lt;/&gt;</i><i>{ }</i><i>fn()</i></div>
       <div class="bob">
         <div class="sprite" style="--shirt:${reviewer ? '#B98CFF' : p.shirt};--shirt2:${reviewer ? '#5B34A8' : p.shirt2};--h1:${reviewer ? '#FFD98A' : p.h1};--h2:${reviewer ? '#BE8BFF' : p.h2}">
           <div class="arm l"></div>
@@ -962,6 +1059,12 @@
     const used = new Set(deskOwner.values());
     for (const a of agents) {
       if (deskOwner.has(a.agent)) continue;
+      // v2.3: dispatcher/loop nhận bàn điều phối riêng nếu còn trống
+      if (a.role === 'dispatcher' && !used.has(LOOP_DESK)) {
+        deskOwner.set(a.agent, LOOP_DESK);
+        used.add(LOOP_DESK);
+        continue;
+      }
       let free = -1;
       for (let i = 0; i < DESKS.length; i++) {
         if (!used.has(i)) { free = i; break; }
@@ -1001,17 +1104,43 @@
       el.classList.add('in');
       // C1: agent stale (không hoạt động lâu) → vẽ nghỉ, KHÔNG typing/glow
       const isStale = !!a.stale;
-      el.classList.toggle('typing', !isStale && (a.phase === 'building' || a.phase === 'review'));
+      const role = a.role || 'builder';
+      // v2.3: class theo role (giữ tương thích .reviewer/.builder cũ)
+      el.classList.toggle('reviewer', role === 'reviewer');
+      el.classList.toggle('builder', role === 'builder');
+      el.classList.toggle('dispatcher', role === 'dispatcher');
+      el.classList.toggle('merger', role === 'merger');
+      el.classList.toggle('typing', !isStale && (
+        (role === 'reviewer' && a.phase === 'review') ||
+        (role === 'builder' && (a.phase === 'building' || a.phase === 'review'))
+      ));
+      el.classList.toggle('bubble', !isStale && role === 'builder' && a.phase === 'building');
       el.classList.toggle('idle-stale', isStale);
-      el.classList.toggle('reviewer', a.role === 'reviewer');
-      el.classList.toggle('builder', a.role !== 'reviewer');
+
+      // v2.3: ROLE badge + phase badge
+      el.querySelector('.namebadge').className = 'namebadge role-' + role;
+      el.querySelector('.role-badge').textContent = (ROLE_INFO[role] || ROLE_INFO.builder).label;
+
+      // v2.3: đổi task → flash namebadge
+      const prevTask = taskMemo.get(a.agent);
+      if (prevTask !== undefined && prevTask !== a.task) {
+        el.classList.remove('flash-switch');
+        void el.offsetWidth;
+        el.classList.add('flash-switch');
+        setTimeout(() => el.classList.remove('flash-switch'), 700);
+      }
+      taskMemo.set(a.agent, a.task);
 
       const idleTxt = isStale
         ? ' · idle ' + ago(a.activeAgoSec)
         : (a.phase === 'review' ? ' · review' : '');
       el.querySelector('.nm').textContent = a.agent + idleTxt;
-      el.querySelector('.tk').textContent = a.task || '';
+      // v2.3: task ĐẬM + icon ▸ khi đang làm (stale/không task → giữ trơn)
+      const tk = el.querySelector('.tk');
+      if (isStale || !a.task) tk.textContent = a.task || '';
+      else tk.innerHTML = '<span class="tik">▸</span>' + esc(a.task);
       el.querySelector('.tl').textContent = isStale ? '(đã dừng?)' : (a.title || '');
+      el.querySelector('.ph').textContent = isStale ? '' : (PHASE_TEXT[a.phase] || a.phase || '');
       keep.add(a.agent);
     });
 
@@ -1044,7 +1173,7 @@
       const key = 'bench:' + a.agent;
       let el = charEls.get(key);
       if (!el) {
-        el = createChar({ ...a, role: 'builder' }, i + 2, 'bench');
+        el = createChar(a, i + 2, 'bench');
         benchLayer.appendChild(el);
         charEls.set(key, el);
         const pt0 = benchPoint(i);
@@ -1057,7 +1186,12 @@
       el.style.top = pt.y + 'px';
       el.style.zIndex = String(14 + i);
       el.classList.add('in');
+      const bRole = a.role || 'builder';
+      el.querySelector('.namebadge').className = 'namebadge role-' + bRole;
+      el.querySelector('.role-badge').textContent = (ROLE_INFO[bRole] || ROLE_INFO.builder).label;
       el.querySelector('.nm').textContent = a.agent + ' · idle';
+      el.querySelector('.tl').textContent = a.title || '';
+      el.querySelector('.ph').textContent = PHASE_TEXT[a.phase] || 'chờ';
       benchKeep.add(key);
     });
     for (const [key, el] of [...charEls.entries()]) {
