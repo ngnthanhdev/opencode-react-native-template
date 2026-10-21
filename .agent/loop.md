@@ -98,6 +98,48 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
 > Mất/hỏng `agents-live.json` KHÔNG ảnh hưởng loop — dashboard tự fallback suy luận từ worktree.
 > Builder **vẫn KHÔNG** ghi `progress.json`; chỉ gọi `agent-live.mjs` (ghi 1 file riêng trong `.context/`).
 
+---
+
+## Dependency scheduling (`schedule_mode: dependency`, opt-in)
+
+> Mặc định `schedule_mode: layer` (barrier theo layer ở trên). Bật `dependency` trong `.context/project-config.md`
+> khi muốn bỏ thời gian chờ task chậm nhất của layer và đuôi tuần tự merge → verify → spec-validator.
+> Task được dispatch **ngay khi các task nó phụ thuộc đã merge**, không chờ cả layer.
+
+**Điều kiện:** mọi task file khai `## Dependencies` đầy đủ dạng `layer-N/task-NN` (hoặc `- none`). Task
+layer > 0 không khai gì → script coi như phụ thuộc MỌI task layer trước (an toàn, nhưng mất lợi ích).
+Plan đã duyệt ở bước graph liệt kê các **milestone** (mặc định: hết mỗi layer) và milestone nào là ⏸ chặn.
+
+```
+Integration branch chung: build-integration (truyền --integration build-integration cho setup/merge).
+Lặp tới khi hết task:
+1. node scripts/parallel-dispatch.mjs ready --until-layer <layer của milestone ⏸ kế tiếp>
+   → { ready, running, waiting, stuck }
+   • stuck: true (không có gì chạy/sẵn sàng mà vẫn còn task chờ) → dependency sai/vòng → DỪNG, báo human.
+   • waiting có unknownDeps → task khai dependency không tồn tại → sửa task file trước.
+2. Với MỖI task trong ready (song song, giới hạn số builder bằng --max nếu cần):
+   setup --task <id> --integration build-integration → spawn builder như Dispatcher steps 2a–2b.
+3. Builder nào PASS + commit xong (không đợi builder khác):
+   a. node scripts/parallel-dispatch.mjs merge --task <id> --integration build-integration
+      (CONFLICT → task đó chạy lại tuần tự trên build-integration, ghi error-memory.md)
+   b. verify nhanh trên build-integration (typecheck + test của phần bị đụng; verify FULL dồn về milestone)
+   c. progress-write.mjs complete --task <id> … → cleanup --task <id>
+   d. quay lại bước 1 (task mới có thể vừa được mở khoá).
+4. Mọi task của 1 layer đã merge = MILESTONE:
+   • verify TỔNG THỂ trên build-integration (như Merge steps bước 2).
+   • spawn `spec-validator` cho layer đó **song song** với các task đang chạy/ready của layer sau —
+     KHÔNG chặn dispatch. FAIL → NGỪNG dispatch task mới (task đang chạy vẫn chạy xong), báo human danh sách
+     gap + task sửa đề xuất (dependency vào task liên quan); human duyệt → đưa task sửa vào vòng lặp rồi chạy tiếp.
+   • milestone ⏸ (đã đánh dấu trong plan) → `ready --until-layer` dừng ở đây: chờ các task đang chạy xong,
+     merge build-integration về nhánh chính theo git policy, compact, HUMAN CHECKPOINT rồi mới đi tiếp.
+     Milestone không ⏸ → ghi tóm tắt cho human (không dừng), compact, tiếp tục.
+```
+
+> An toàn giữ nguyên: builder vẫn không ghi `progress.json`, không merge/push; merge dừng khi conflict;
+> spec-validator vẫn chạy cho mọi layer; human vẫn duyệt ở mọi milestone ⏸ và khi spec-validator FAIL.
+
+---
+
 > Một task tại một thời điểm **chỉ trong 1 builder** (1 worktree). Song song xảy ra **giữa các builder** — không phải trong 1 builder. Builder commit trong worktree + review riêng, **không** tự ghi state/merge; dispatcher lo gom.
 
 ---

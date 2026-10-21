@@ -20,11 +20,13 @@
  *     cho song song (đẩy task sau sang lượt kế tiếp). Output JSON:
  *       { "layer": N, "integrationBranch": "...", "waves": [ [task...], [task...] ] }
  *
- *   setup --task <layer-N/task-NN> [--base <ref>]
+ *   setup --task <layer-N/task-NN> [--base <ref>] [--integration <branch>]
  *     Tạo worktree + branch cho 1 task. In ra đường dẫn worktree (builder cd vào đó chạy).
  *       worktree: .worktrees/<layer-N__task-NN>
  *       branch:   wt/<layer-N__task-NN>
  *     --base mặc định = HEAD của integration branch của layer (hoặc nhánh hiện tại).
+ *     --integration: dùng integration branch chỉ định thay cho branch theo layer
+ *     (schedule_mode: dependency dùng chung 1 branch, mặc định `build-integration`).
  *     Sau khi tạo worktree: nếu project-config khai `worktree_setup_cmd` → chạy hook đó
  *     với cwd = worktree và env WORKTREE_PATH / TASK_ID / WORKTREE_SLUG
  *     (project tự tạo DB riêng + .env.local riêng cho từng worktree).
@@ -39,8 +41,21 @@
  *     Merge tuần tự; nếu conflict → DỪNG, in task gây conflict để human/agent xử lý.
  *     Mặc định in verifyHint để agent chạy verify tổng thể (lệnh từ .context/project-config.md).
  *
- *   cleanup --layer <N>
- *     Xoá worktree + branch tạm của layer sau khi merge xong & progress.json đã cập nhật.
+ *   ready [--until-layer <N>] [--max <K>] [--integration <branch>]
+ *     (schedule_mode: dependency) Liệt kê task initial build SẴN SÀNG chạy ngay: mọi task trong
+ *     "## Dependencies" (dạng `layer-N/task-NN`, hoặc `none`) đã xong, không trùng file với task
+ *     đang chạy/đã chọn. Task không khai dependency ở layer > 0 → coi như phụ thuộc mọi task của
+ *     layer trước (an toàn như barrier cũ). "Xong" = có trong progress.json completedTasks hoặc
+ *     có commit merge(wt/<slug>) trên integration branch (không còn worktree). Output JSON:
+ *       { integrationBranch, ready: [...], running: [...], waiting: [...], done, total, stuck }
+ *     --until-layer N: không chọn task ở layer > N (dừng ở milestone cần human duyệt).
+ *
+ *   merge --task <id> [--integration <branch>]
+ *     Merge NGAY 1 branch task (đã PASS + commit) vào integration branch — dùng cho lập lịch
+ *     theo dependency, để task phụ thuộc được dispatch mà không chờ cả layer.
+ *
+ *   cleanup --layer <N>   |   cleanup --task <id>
+ *     Xoá worktree + branch tạm của layer (hoặc của đúng 1 task) sau khi merge xong & progress.json đã cập nhật.
  *     Trước khi xoá mỗi worktree: chạy `worktree_teardown_cmd` (nếu khai) để drop DB tạm,
  *     rồi trả slot port của worktree đó về `.worktrees/.ports.json`.
  *
@@ -275,7 +290,12 @@ function worktreePath(taskId) { return path.join(ROOT, '.worktrees', taskSlug(ta
 // integration branch:
 //   initial build:  layer-<N>-integration
 //   change (bug/feature): <scope>-phase-<N>-integration   (scope = feature-x / bug-y)
+//   schedule_mode: dependency: 1 branch chung DEP_INTEGRATION (truyền qua --integration)
 function integrationBranch(unit) { return `${unit}-integration` }
+const DEP_INTEGRATION = 'build-integration'
+function integrationOverride(args) {
+  return args.integration && args.integration !== true ? String(args.integration) : null
+}
 
 // Phân giải unit làm việc từ args:
 //   --layer N                                   → initial build, unit = "layer-N"
@@ -376,16 +396,17 @@ function cmdSetup(args) {
   if (!taskId || taskId === true) die('cần --task <layer-N/task-NN> hoặc <scope>/phase-N/task-NN')
   const unit = unitOfTaskId(taskId)
   const base = args.base && args.base !== true ? args.base : currentOrIntegration()
+  const ib = integrationOverride(args) || integrationBranch(unit)
 
-  // đảm bảo integration branch của unit tồn tại
-  ensureIntegrationBranch(unit, base)
+  // đảm bảo integration branch tồn tại
+  ensureIntegrationBranch(ib, base)
 
   const wt = worktreePath(taskId)
   const br = branchName(taskId)
   if (fs.existsSync(wt)) die(`worktree đã tồn tại: ${path.relative(ROOT, wt)} (chạy cleanup trước nếu muốn làm lại)`)
 
   fs.mkdirSync(path.join(ROOT, '.worktrees'), { recursive: true })
-  const r = shTry('git', ['worktree', 'add', '-b', br, wt, integrationBranch(unit)])
+  const r = shTry('git', ['worktree', 'add', '-b', br, wt, ib])
   if (!r.ok) die(`tạo worktree lỗi: ${r.err}`)
 
   // hook riêng của project: tạo DB riêng + .env.local riêng cho worktree này
@@ -402,7 +423,7 @@ function cmdSetup(args) {
     unit,
     worktree: path.relative(ROOT, wt),
     branch: br,
-    base: integrationBranch(unit),
+    base: ib,
     infra: infra ? { port: Number(infra.WORKTREE_PORT), slot: Number(infra.WORKTREE_SLOT) } : null,
     requireInfra,
     setupHook: hook.ran ? (hook.ok ? 'ok' : 'FAILED (xem stderr)') : 'skipped (chưa khai worktree_setup_cmd)',
@@ -425,8 +446,7 @@ function currentOrIntegration() {
   const r = shTry('git', ['rev-parse', '--abbrev-ref', 'HEAD'])
   return r.ok ? r.out : 'HEAD'
 }
-function ensureIntegrationBranch(unit, base) {
-  const ib = integrationBranch(unit)
+function ensureIntegrationBranch(ib, base) {
   const exists = shTry('git', ['show-ref', '--verify', '--quiet', `refs/heads/${ib}`]).ok
   if (!exists) {
     const r = shTry('git', ['branch', ib, base])
@@ -437,6 +457,7 @@ function ensureIntegrationBranch(unit, base) {
 }
 
 function cmdMerge(args) {
+  if (args.task && args.task !== true) return cmdMergeTask(args)
   const u = resolveUnit(args)
   const ib = integrationBranch(u.unit)
   if (!shTry('git', ['show-ref', '--verify', '--quiet', `refs/heads/${ib}`]).ok)
@@ -473,16 +494,53 @@ function cmdMerge(args) {
   console.log(JSON.stringify(result, null, 2))
 }
 
-function cmdCleanup(args) {
+// Merge đúng 1 branch task vào integration branch (lập lịch theo dependency).
+function cmdMergeTask(args) {
+  const taskId = String(args.task)
+  const ib = integrationOverride(args) || integrationBranch(unitOfTaskId(taskId))
+  const br = branchName(taskId)
+  if (!shTry('git', ['show-ref', '--verify', '--quiet', `refs/heads/${ib}`]).ok)
+    die(`chưa có integration branch ${ib} — chạy setup trước`)
+  if (!shTry('git', ['show-ref', '--verify', '--quiet', `refs/heads/${br}`]).ok)
+    die(`không có branch ${br}`)
+  const co = shTry('git', ['checkout', ib])
+  if (!co.ok) die(`checkout ${ib} lỗi: ${co.err}`)
+  const r = shTry('git', ['merge', '--no-ff', '-m', `merge(${br}): ${taskId}`, br])
+  if (!r.ok) {
+    shTry('git', ['merge', '--abort'])
+    die(`CONFLICT khi merge ${br} — DỪNG. Chạy lại task này tuần tự trên ${ib}. Chi tiết:\n${r.err || r.out}`)
+  }
+  console.log(JSON.stringify({
+    task: taskId, integrationBranch: ib, merged: [br],
+    verifyHint: 'Chạy verify tổng thể theo .context/project-config.md trên integration branch trước khi ghi progress.json + cleanup --task.',
+  }, null, 2))
+}
+
+// cleanup theo layer/phase (prefix) hoặc theo đúng 1 task (--task)
+function cleanupTarget(args) {
+  if (args.task && args.task !== true) {
+    const slug = taskSlug(String(args.task))
+    return {
+      label: String(args.task),
+      matchWorktree: (p) => path.basename(p) === slug && p.includes('.worktrees'),
+      matchBranch: (b) => b === branchName(String(args.task)),
+    }
+  }
   const u = resolveUnit(args)
   const wtDirPart = `.worktrees/${u.unit.replace(/[\/]/g, '__')}__`
+  const prefix = unitBranchPrefix(u.unit)
+  return { label: u.unit, matchWorktree: (p) => p.includes(wtDirPart), matchBranch: (b) => b.startsWith(prefix) }
+}
+
+function cmdCleanup(args) {
+  const target = cleanupTarget(args)
   const removed = []
   const cfg = readProjectConfig()
   // xoá worktree
   const list = shTry('git', ['worktree', 'list', '--porcelain']).out
   for (const block of list.split('\n\n')) {
     const p = block.split('\n').find(l => l.startsWith('worktree '))?.slice(9)
-    if (p && p.includes(wtDirPart)) {
+    if (p && target.matchWorktree(p)) {
       // teardown hook TRƯỚC khi xoá (drop DB tạm, dọn .env.local riêng…)
       const slug = path.basename(p)
       const taskId = slug.replace(/__/g, '/')
@@ -499,16 +557,117 @@ function cmdCleanup(args) {
       releasePortSlot(slug)
     }
   }
-  // xoá branch wt/<unit>__*
-  const prefix = unitBranchPrefix(u.unit)
+  // xoá branch wt/<unit>__* (hoặc đúng branch của task)
   const branches = shTry('git', ['for-each-ref', '--format=%(refname:short)', 'refs/heads/wt/'])
-    .out.split('\n').map(s => s.trim()).filter(b => b.startsWith(prefix))
+    .out.split('\n').map(s => s.trim()).filter(target.matchBranch)
   for (const b of branches) { shTry('git', ['branch', '-D', b]); removed.push(b) }
   console.log(JSON.stringify({
-    unit: u.unit,
+    unit: target.label,
     removed,
     teardownHook: cfg.worktree_teardown_cmd ? 'ran (xem stderr nếu lỗi)' : 'skipped (chưa khai worktree_teardown_cmd)',
   }, null, 2))
+}
+
+// ── lập lịch theo dependency ────────────────────────────────────────────────
+// id chuẩn hoá: "layer-4/task-01" (bỏ số 0 thừa ở layer, task đệm 2 chữ số)
+function normTaskId(layer, task) { return `layer-${Number(layer)}/task-${String(Number(task)).padStart(2, '0')}` }
+
+function findAllBuildTasks() {
+  const tasksRoot = path.join(ROOT, 'tasks')
+  if (!fs.existsSync(tasksRoot)) return []
+  const out = []
+  for (const slug of fs.readdirSync(tasksRoot)) {
+    const dir = path.join(tasksRoot, slug)
+    if (!fs.statSync(dir).isDirectory()) continue
+    for (const f of fs.readdirSync(dir)) {
+      const m = f.match(/^layer-(\d+)-task-(\d+)\.md$/)
+      if (m) out.push({ id: normTaskId(m[1], m[2]), layer: Number(m[1]), file: path.join(dir, f) })
+    }
+  }
+  return out.sort((a, b) => a.layer - b.layer || a.id.localeCompare(b.id))
+}
+
+// "## Dependencies": `layer-N/task-NN` (chấp nhận layer-N-task-NN); `none`/`n/a`/`không` = không phụ thuộc.
+// null = không khai gì → caller áp dependency ngầm (mọi task layer trước).
+function depsOfTask(file) {
+  const txt = fs.readFileSync(file, 'utf8')
+  const m = txt.match(/##\s*Dependencies([\s\S]*?)(?:\n##\s|\n#\s|$)/i)
+  if (!m) return null
+  const deps = [...m[1].matchAll(/layer-(\d+)[\/_-]+task-(\d+)/gi)].map(g => normTaskId(g[1], g[2]))
+  if (deps.length) return [...new Set(deps)]
+  return /^\s*[-*]\s*(none|n\/a|không)\b/im.test(m[1]) ? [] : null
+}
+
+function taskIdsOf(list) {
+  return (Array.isArray(list) ? list : []).map(e => (typeof e === 'string' ? e : e?.task)).filter(Boolean)
+}
+function readProgress() {
+  try { return JSON.parse(fs.readFileSync(path.join(ROOT, '.context', 'progress.json'), 'utf8')) || {} }
+  catch { return {} }
+}
+function idFromSlug(slug) {
+  const m = slug.match(/^layer-(\d+)__task-(\d+)$/)
+  return m ? normTaskId(m[1], m[2]) : null
+}
+function activeWorktreeIds() {
+  const ids = new Set()
+  for (const block of shTry('git', ['worktree', 'list', '--porcelain']).out.split('\n\n')) {
+    const p = block.split('\n').find(l => l.startsWith('worktree '))?.slice(9)
+    const id = p && p.includes('.worktrees') ? idFromSlug(path.basename(p)) : null
+    if (id) ids.add(id)
+  }
+  return ids
+}
+// Task đã merge vào integration branch = có commit "merge(wt/<slug>): ..." do lệnh merge tạo ra
+// (vẫn đúng sau khi cleanup xoá branch). KHÔNG dùng `git branch --merged`: branch vừa setup chưa có
+// commit nào cũng "merged" → task chưa chạy bị tính là xong.
+function mergedTaskIds(ib) {
+  const ids = new Set()
+  const log = shTry('git', ['log', '--merges', '--format=%s', ib])
+  if (log.ok) {
+    for (const m of log.out.matchAll(/^merge\(wt\/([^)]+)\):/gm)) {
+      const id = idFromSlug(m[1])
+      if (id) ids.add(id)
+    }
+  }
+  return ids
+}
+
+function computeReady({ ib, untilLayer = null, max = Infinity }) {
+  const tasks = findAllBuildTasks()
+  const byId = new Map(tasks.map(t => [t.id, t]))
+  const progress = readProgress()
+  const running = activeWorktreeIds()
+  const done = new Set(taskIdsOf(progress.completedTasks).map(id => idFromSlug(taskSlug(id)) || id))
+  for (const id of mergedTaskIds(ib)) if (!running.has(id)) done.add(id)
+  const blocked = new Set(taskIdsOf(progress.blockedTasks))
+
+  const claimed = new Set()
+  for (const id of running) if (byId.has(id)) filesOfTask(byId.get(id).file).forEach(f => claimed.add(f))
+
+  const ready = [], waiting = []
+  for (const t of tasks) {
+    if (done.has(t.id) || running.has(t.id) || blocked.has(t.id)) continue
+    if (untilLayer !== null && t.layer > untilLayer) { waiting.push({ id: t.id, reason: `sau milestone layer ${untilLayer}` }); continue }
+    const declared = depsOfTask(t.file)
+    const deps = declared ?? tasks.filter(o => o.layer < t.layer).map(o => o.id)
+    const unknown = deps.filter(d => !byId.has(d))
+    const pending = deps.filter(d => !done.has(d))
+    if (pending.length) { waiting.push({ id: t.id, waitingOn: pending, ...(unknown.length ? { unknownDeps: unknown } : {}) }); continue }
+    const files = filesOfTask(t.file)
+    const clash = files.filter(f => claimed.has(f))
+    if (clash.length || ready.length >= max) { waiting.push({ id: t.id, reason: clash.length ? `trùng file: ${clash.join(', ')}` : 'đủ --max' }); continue }
+    files.forEach(f => claimed.add(f))
+    ready.push({ id: t.id, file: path.relative(ROOT, t.file), files, deps, implicitDeps: declared === null })
+  }
+  const stuck = !ready.length && !running.size && waiting.some(w => w.waitingOn)
+  return { integrationBranch: ib, ready, running: [...running], waiting, done: done.size, blocked: [...blocked], total: tasks.length, stuck }
+}
+
+function cmdReady(args) {
+  const untilLayer = args['until-layer'] !== undefined && args['until-layer'] !== true ? Number(args['until-layer']) : null
+  const max = args.max !== undefined && args.max !== true ? Number(args.max) : Infinity
+  console.log(JSON.stringify(computeReady({ ib: integrationOverride(args) || DEP_INTEGRATION, untilLayer, max }), null, 2))
 }
 
 function cmdStatus() {
@@ -528,14 +687,17 @@ const args = parseArgs(argv.slice(1))
 switch (sub) {
   case 'plan': cmdPlan(args); break
   case 'setup': cmdSetup(args); break
+  case 'ready': cmdReady(args); break
   case 'merge': cmdMerge(args); break
   case 'cleanup': cmdCleanup(args); break
   case 'status': cmdStatus(); break
   default:
-    console.log('parallel-dispatch.mjs — lệnh: plan | setup | merge | cleanup | status')
+    console.log('parallel-dispatch.mjs — lệnh: plan | ready | setup | merge | cleanup | status')
     console.log('  node scripts/parallel-dispatch.mjs plan --layer 1')
     console.log('  node scripts/parallel-dispatch.mjs setup --task layer-1/task-03')
     console.log('  node scripts/parallel-dispatch.mjs merge --layer 1')
     console.log('  node scripts/parallel-dispatch.mjs cleanup --layer 1')
+    console.log('  node scripts/parallel-dispatch.mjs ready --until-layer 3          # schedule_mode: dependency')
+    console.log('  node scripts/parallel-dispatch.mjs merge --task layer-2/task-04 --integration build-integration')
     process.exit(sub ? 1 : 0)
 }

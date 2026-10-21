@@ -54,7 +54,7 @@ Chạy **Project Start** — chuỗi khởi tạo **chạy liên tục** cho rep
    → hết layer/phase → `spec-validator` cross-check; hết phase → context-manager compact
    → hết LAYER CUỐI (initial build) → `spec-publisher` (.agent/spec-publish.md): sinh/cập nhật
      `spec/test-scope/current.json` (`trigger: initial-build`, scopeVersion +1) + `spec/CHANGELOG.md`
-   → ⏸ checkpoint sau mỗi layer → layer 1 → … (Layer N+1 chỉ unlock khi Layer N PASS + user approve)
+   → ⏸ checkpoint sau mỗi layer → layer 1 → … (Layer N+1 chỉ unlock khi Layer N PASS + user approve; `schedule_mode: dependency` → dispatch theo dependency, checkpoint theo milestone ⏸)
 ```
 
 ## Agent được gọi trong chuỗi

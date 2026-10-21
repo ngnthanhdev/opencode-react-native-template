@@ -18,6 +18,9 @@ forbidden_branch: main         # cấm push trực tiếp (opencode.jsonc hard-d
 branch_pattern: "<target_branch>" # default staging-direct; feature/<slug>|bug/<slug> chỉ khi user yêu cầu feature branch
 auto_push_after_pass: false    # ⚠️ KHÔNG phải "tự commit": commit sau PASS luôn BẮT BUỘC. Flag này chỉ = AUTO-PUSH: true = tự `git push origin <target_branch>` sau PASS; false = chỉ commit local, chờ user yêu cầu rõ.
 
+# ── Loop / lập lịch ──
+schedule_mode: layer           # layer (mặc định: barrier + human checkpoint mỗi layer) | dependency (dispatch task ngay khi dependency đã merge, checkpoint theo milestone — xem .agent/loop.md)
+
 # ── Package / source ──
 package_manager: <none|pnpm|npm|yarn|bun>  # none/chưa điền = không hardcode lệnh
 source_roots: []               # ví dụ: [src] hoặc [apps, packages]; [] nếu chưa có app code

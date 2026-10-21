@@ -49,7 +49,7 @@
 
 | # | Nhóm | Field | Nguồn |
 |---|------|-------|-------|
-| 1 | **Git & branch** | `target_branch`, `forbidden_branch`, `auto_push_after_pass` | hỏi |
+| 1 | **Git & branch** | `target_branch`, `forbidden_branch`, `auto_push_after_pass`, `schedule_mode` | hỏi |
 | 2 | **Stack & source** | `package_manager`, `source_roots` | auto-detect + confirm |
 | 3 | **Verify commands** | `install`/`lint`/`typecheck`/`test`/`build` (+ web/api split) | auto-detect + confirm |
 | 4 | **Database & migration** | `db_tool`, `migration_required`, `staging_db`, `prod_db`, `migration_command`, hạ tầng test (`test_infra_port_base`, `require_infra`, `integration_test_command`, `infra_up_command`, `worktree_setup_cmd`/`worktree_teardown_cmd`) | auto-detect + confirm |
@@ -65,6 +65,8 @@
 - `auto_push_after_pass` — `true|false`. ⚠️ KHÔNG phải "tự commit": commit sau PASS luôn **bắt buộc**.
   Flag chỉ = có tự `git push origin <target_branch>` sau PASS hay không:
   `false` (mặc định) = chỉ commit local, chờ user yêu cầu; `true` = tự push `target_branch` (vẫn cấm `forbidden_branch`).
+- `schedule_mode` — `layer` (mặc định: barrier + checkpoint mỗi layer) | `dependency` (task chạy ngay khi dependency đã merge,
+  checkpoint theo milestone ⏸ — `.agent/loop.md` § Dependency scheduling).
 
 **Nhóm 2 — Stack & source**
 - Confirm `package_manager` (`none|pnpm|npm|yarn|bun`), `source_roots` (vd `[src]`, `[apps, packages]`, `[]`).
