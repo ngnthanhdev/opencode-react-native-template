@@ -94,10 +94,37 @@ Quy tắc bắt buộc:
 - **Trước khi kết thúc:** ghi summary ngắn vào `.context/runs/<type>-<slug>-<phaseTask>.builder.md`
   (đã làm gì, vì sao, còn dở gì) để session sau resume không phải redo mù.
 
+**Self-check trước khi báo PASS:**
+
+Chạy sau verify commands, TRƯỚC khi trả completion report (= trước khi reviewer được gọi). Chỉ xét mục áp dụng cho
+diff của task; không áp dụng → `N/A`. Quét thêm `.context/error-memory.md` các entry có tag `review-finding/<category>` —
+category khớp diff thì soát như 1 mục bổ sung. Mục chưa OK → sửa trước; không sửa được → ghi blocker, không báo PASS.
+Soát thêm mục riêng của project trong `.context/self-check.md` (nếu có) — file này lớn dần từ finding thật
+(controller append theo `.agent/error-analyzer.md` Rules), builder không tự sửa.
+
+- **Input & bảo mật**
+  - Mọi text/file người dùng hoặc nguồn ngoài có giới hạn độ dài/kích thước, validate ở server? (vd note ≤ 500 ký tự)
+  - Regex/parser chạy trên dữ liệu attacker kiểm soát có tránh backtracking bậc 2+ (ReDoS)? (vd cắt độ dài trước khi regex HTML)
+  - Nội dung không tin cậy đưa vào LLM có được cô lập mà chính nội dung đó không phá được ranh giới? (prompt injection)
+  - Input giả/không hợp lệ có bị chặn TRƯỚC khi gọi API trả phí? (vd ảnh rỗng, URL không phải ảnh)
+- **Luồng tiền & dữ liệu người dùng**
+  - Mọi hành động trừ tiền/credit có dialog xác nhận bắt buộc trước khi gọi purchase? (vd mua gói)
+  - Xoá/reset hàng loạt có giữ dữ liệu người dùng đã trả tiền? (vd "xoá lịch sử" không xoá kết quả đã mua)
+- **Câu chữ & pháp lý**
+  - Copy privacy/terms/quyền dữ liệu có khớp đúng hành vi code? (vd ghi "ảnh không upload" nhưng code có upload)
+- **Mobile UI**
+  - Control tương tác mới có vùng chạm ≥ 44×44 dp (padding/`hitSlop`)?
+- **Contract**
+  - Response schema (Zod hoặc tương tự) có serialize được giá trị thật handler trả? (vd `Date` vs string, `transform` → 500 mọi response)
+
+Report: dòng `Self-check:` rồi 1 dòng/nhóm `<nhóm>: <mục> OK|N/A, …` (nhóm không đụng → `<nhóm>: N/A`), không viết essay.
+Vd: `Input & bảo mật: bounds OK, ReDoS N/A, LLM N/A, paid-input OK`.
+
 Trả về:
 - **Mở đầu bằng `Agent: builder`** (attribution bắt buộc — session handoff dò theo agent này).
 - Task đã hoàn thành (yes/no), files create/modify, test đã thêm + kết quả check,
   giả định đã nêu, blocker (nếu có).
+- Dòng `Self-check:` theo section trên (bắt buộc; thiếu = chưa sẵn sàng review).
 - Với bug: task hoàn thành chỉ khi original repro đã PASS. Nếu chưa PASS, trả `yes/no = no`
   và nêu bước debug tiếp theo thay vì báo xong.
 

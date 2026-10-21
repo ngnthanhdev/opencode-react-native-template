@@ -126,3 +126,9 @@ After project completes (or every 5 errors), extract generalizable patterns:
 3. **Track frequency** — if same error 3+ times, promote to common-errors
 4. **Don't over-log** — only genuinely novel errors, not typos
 5. **Link to task** — always reference which task triggered the error
+6. **Review finding lặp lại → self-check** — entry từ Reviewer FAIL ghi thêm `**Tag:** review-finding/<category>`
+   (kebab-case ngắn, vd `input-bounds`, `paid-confirm`, `schema-encode`). Cùng category xuất hiện **≥2 lần** (kể cả
+   finding reviewer gắn `missed self-check`) → controller append 1 câu hỏi kiểm tra được (1 dòng, ví dụ ngắn trong ngoặc) vào đúng nhóm
+   trong `.context/self-check.md` (file của project — KHÔNG sửa `.opencode/agent/builder.md`: template-sync ghi đè
+   `.opencode/`, và opencode không hot-reload agent); trùng mục có sẵn (ở builder.md hoặc self-check.md) → chỉ làm rõ
+   mục trong `.context/self-check.md`, không thêm trùng.

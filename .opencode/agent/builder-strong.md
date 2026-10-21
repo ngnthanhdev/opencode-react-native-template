@@ -41,5 +41,7 @@ Trước khi làm, đọc theo thứ tự:
 
 Tuân thủ toàn bộ quy tắc của `builder` (scope, TDD, ponytail, security, check_commands,
 không commit/push). Với task khó, nêu rõ giả định và trade-off trước khi code.
+Bắt buộc chạy **Self-check trước khi báo PASS** (Read đúng section đó trong `.opencode/agent/builder.md`) và
+ghi dòng `Self-check:` vào completion report như builder.
 
 Trả về: **mở đầu bằng `Agent: builder-strong`** (attribution bắt buộc), rồi mới đến kết quả task.

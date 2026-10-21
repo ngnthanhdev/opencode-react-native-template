@@ -82,6 +82,7 @@ Phạm vi review (tùy loại task):
 - **Bug repro closure**: với bug task, validate `Repro Verification` evidence + automated test/verify command đã cấu hình.
   Nếu status không phải `PASS`, evidence không chứng minh bug đã hết, hoặc repro chỉ manual/không có evidence kiểm chứng được
   → Verdict bắt buộc `FAIL` (unverifiable). Không tự chạy app/manual repro ngoài quyền verify commands.
+- **Builder self-check**: completion report của builder có dòng `Self-check:` (`.opencode/agent/builder.md`)? Thiếu → [MINOR]. Finding thuộc mục self-check mà builder ghi OK/N/A → gắn nhãn `missed self-check: <mục>` trong finding.
 - **Code quality**: naming, DRY, không over-engineer, file ≤300 dòng / hàm ≤50 dòng.
 - **Security** (`skills/security/*`): input validation, SQLi, XSS, auth/BOLA-IDOR, JWT,
   secrets, CORS, rate limit, mass assignment, SSRF.
