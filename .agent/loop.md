@@ -46,8 +46,12 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
       → nếu `.context/project-config.md` khai `worktree_setup_cmd`, script tự chạy hook đó
         (cwd = worktree, env WORKTREE_PATH / TASK_ID / WORKTREE_SLUG) để tạo DB riêng
         + ghi `.env.local` riêng. Hook fail → chỉ cảnh báo, KHÔNG chặn build.
+      → nếu khai `test_infra_port_base`, worktree nhận 1 port CỐ ĐỊNH (`infra.port` trong output,
+        env `WORKTREE_PORT`/`WORKTREE_SLOT` cho hook). `require_infra: true` + hook fail → `setup`
+        exit 1 → KHÔNG spawn builder cho task đó, sửa hạ tầng trước.
    b. spawn SONG SONG 1 builder/task (sessions_spawn, context="isolated"):
       "cd <worktree>; chạy FULL loop cho <task file>; chỉ touch file trong scope;
+       chạy cả integration_test_command (nếu khai) trên port <infra.port>;
        commit trong worktree; KHÔNG ghi progress.json; báo PASS/BLOCKED về."
       ngay TRƯỚC khi spawn, đánh dấu agent đang sống (display-only):
       node tools/task-dashboard/agent-live.mjs enter --agent builder-<n> --role builder \
@@ -74,6 +78,8 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
    → gom mọi branch wt/layer-N__* về integration branch layer-N-integration.
    → CONFLICT → DỪNG: cho task đó chạy LẠI TUẦN TỰ trên integration branch, ghi error-memory.md.
 2. Verify TỔNG THỂ trên integration branch (typecheck/lint/test theo project-config) — từng task pass riêng KHÔNG đảm bảo ghép lại pass. FAIL → error-analyzer → fix → verify lại.
+   Có `integration_test_command` → chạy `infra_up_command` (checkout chính, port base) rồi chạy lệnh đó;
+   `require_infra: true` mà test hạ tầng bị skip = FAIL. Đây là chốt chặn để lỗi DB/storage không lộ lần đầu trên CI.
 3. Update `.context/progress.json` 1 LẦN — DÙNG HELPER, đừng tự viết JSON tay:
      node tools/task-dashboard/progress-write.mjs complete --task <layer-N/task-NN> \
           --review "STRICT PASS" --round <R> [--report <review-report path>]

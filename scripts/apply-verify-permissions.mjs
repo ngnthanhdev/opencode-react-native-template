@@ -34,6 +34,7 @@ const COMMAND_FIELDS = [
   "lint_command",
   "typecheck_command",
   "test_command",
+  "integration_test_command",
   "build_command",
   "install_command",
 ];

@@ -58,6 +58,15 @@ otel_env: <production|staging>
 # Rỗng = bỏ qua hook.
 worktree_setup_cmd: ""         # chạy SAU khi tạo worktree (tạo DB riêng + ghi .env.local riêng)
 worktree_teardown_cmd: ""      # chạy TRƯỚC khi xoá worktree (drop DB tạm, dọn file runtime)
+
+# ── Hạ tầng test local (DB/storage cho integration test) ──
+# Mỗi worktree được cấp 1 port CỐ ĐỊNH = test_infra_port_base + slot (slot 1, 2, … ghi ở
+# .worktrees/.ports.json; slot 0 = checkout chính dùng đúng port base). Hook nhận $WORKTREE_PORT
+# + $WORKTREE_SLOT để dựng DB riêng trên port đó — KHÔNG dùng port mặc định của máy dev (5432…).
+test_infra_port_base: null     # vd 55432; null = không cấp port
+require_infra: false           # true = test cần DB/storage FAIL thay vì skip khi hạ tầng không chạy; hook setup fail = chặn build
+integration_test_command: null # lệnh test có DB/storage, tự bật cờ: vd "REQUIRE_INFRA=1 pnpm test:integration"
+infra_up_command: null         # dựng hạ tầng cho checkout chính (slot 0) trước verify tổng thể lúc merge
 ```
 
 ### DB / migration
@@ -94,6 +103,31 @@ worktree_teardown_cmd: |
 ```
 
 ```yaml
+# Docker Compose: mỗi worktree 1 project compose riêng, Postgres trên port cố định của worktree
+# (compose file map "${PG_PORT}:5432"). Mẫu để comment — bỏ `# ` đầu dòng khi dùng.
+# worktree_setup_cmd: |
+#   PG_PORT="$WORKTREE_PORT" docker compose -p "wt-$WORKTREE_SLOT" -f deploy/docker-compose.test.yml up -d --wait
+#   echo "DATABASE_URL=postgres://postgres:postgres@localhost:$WORKTREE_PORT/app_test" > .env.local
+#
+# worktree_teardown_cmd: |
+#   docker compose -p "wt-$WORKTREE_SLOT" -f deploy/docker-compose.test.yml down -v
+```
+
+### Hạ tầng test bắt buộc (`require_infra`)
+
+Lỗi chỉ lộ trên CI sau khi đóng layer thường do test DB/storage **tự skip** ở máy local khi không
+kết nối được. Khi project có integration test cần hạ tầng:
+
+- Khai `test_infra_port_base`, `worktree_setup_cmd`/`worktree_teardown_cmd` (ví dụ Docker Compose
+  ở trên), `integration_test_command` (tự set `REQUIRE_INFRA=1`) và `require_infra: true`.
+- Test helper của project phải **throw** thay vì skip khi `REQUIRE_INFRA=1` mà không kết nối được
+  (vd `if (!reachable && process.env.REQUIRE_INFRA === '1') throw new Error('REQUIRE_INFRA=1: DB không kết nối được')`).
+  Không có cờ → giữ hành vi skip cũ cho máy chưa có Docker.
+- Builder chạy `integration_test_command` trong worktree trước khi báo PASS; dispatcher chạy
+  `infra_up_command` + `integration_test_command` trong bước verify tổng thể lúc merge.
+  Kết quả `skipped` cho test cần hạ tầng = **FAIL**, không phải PASS.
+
+```yaml
 # SQLite: mỗi worktree 1 file DB riêng
 worktree_setup_cmd: 'echo "DATABASE_URL=file:./.tmp-$WORKTREE_SLUG.db" > .env.local'
 worktree_teardown_cmd: 'rm -f ".tmp-$WORKTREE_SLUG.db"'
@@ -111,6 +145,7 @@ check_commands:
   api_typecheck: null       # hoặc = api_typecheck_command
   api_lint: null            # hoặc = api_lint_command
   test: null                # hoặc = test_command
+  integration_test: null    # hoặc = integration_test_command (khi require_infra: true)
   build: null               # hoặc = build_command
   migration: null           # hoặc = migration_command khi migration_required=true
   docs_inventory: null

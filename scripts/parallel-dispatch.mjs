@@ -28,6 +28,11 @@
  *     Sau khi tạo worktree: nếu project-config khai `worktree_setup_cmd` → chạy hook đó
  *     với cwd = worktree và env WORKTREE_PATH / TASK_ID / WORKTREE_SLUG
  *     (project tự tạo DB riêng + .env.local riêng cho từng worktree).
+ *     Nếu khai `test_infra_port_base` → worktree được cấp 1 slot cố định (1, 2, …) ghi ở
+ *     `.worktrees/.ports.json`, port = base + slot, truyền vào hook qua WORKTREE_PORT /
+ *     WORKTREE_SLOT (slot 0 = checkout chính, dùng chính port base). Không bao giờ đụng
+ *     port mặc định của máy dev (vd Postgres 5432).
+ *     `require_infra: true` → hook setup FAIL = setup FAIL (exit 1, giữ worktree để debug).
  *
  *   merge --layer <N> [--no-verify]
  *     Gom TẤT CẢ branch wt/<layer-N__*> (đã commit) vào integration branch của layer.
@@ -36,7 +41,8 @@
  *
  *   cleanup --layer <N>
  *     Xoá worktree + branch tạm của layer sau khi merge xong & progress.json đã cập nhật.
- *     Trước khi xoá mỗi worktree: chạy `worktree_teardown_cmd` (nếu khai) để drop DB tạm.
+ *     Trước khi xoá mỗi worktree: chạy `worktree_teardown_cmd` (nếu khai) để drop DB tạm,
+ *     rồi trả slot port của worktree đó về `.worktrees/.ports.json`.
  *
  *   status
  *     Liệt kê worktree hiện có + branch wt/* + trạng thái commit.
@@ -70,7 +76,7 @@ function shTry(cmd, args, opts = {}) {
 }
 function die(msg) { console.error(`✖ ${msg}`); process.exit(1) }
 
-// ── project-config: hook worktree (optional) ────────────────────────────────
+// ── project-config: hook worktree + hạ tầng test (optional) ──────────────────
 // Đọc `.context/project-config.json` nếu có (ưu tiên), sau đó tới key trong
 // `.context/project-config.md` (key đầu tiên thắng). Hỗ trợ cả:
 //   key: "lệnh một dòng"
@@ -79,6 +85,9 @@ function die(msg) { console.error(`✖ ${msg}`); process.exit(1) }
 //     lệnh dòng 2
 // Giá trị placeholder `<...>` / null / rỗng = coi như chưa cấu hình.
 const HOOK_KEYS = ['worktree_setup_cmd', 'worktree_teardown_cmd']
+const INFRA_KEYS = ['test_infra_port_base', 'require_infra']
+const CONFIG_KEYS = [...HOOK_KEYS, ...INFRA_KEYS]
+const CONFIG_KEY_LINE = new RegExp(`^([ \\t]*)(${CONFIG_KEYS.join('|')})[ \\t]*:[ \\t]*(.*)$`)
 
 function indentWidth(s) {
   return String(s).replace(/\t/g, '  ').length
@@ -98,12 +107,12 @@ function cleanScalar(raw) {
   return v
 }
 
-/** Parse 2 hook key từ markdown (hỗ trợ block scalar `|` / `>`). */
-function parseHookKeysFromMarkdown(txt) {
+/** Parse các key CONFIG_KEYS từ markdown (hỗ trợ block scalar `|` / `>`). */
+function parseConfigKeysFromMarkdown(txt) {
   const lines = String(txt).split('\n')
   const out = {}
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^([ \t]*)(worktree_setup_cmd|worktree_teardown_cmd)[ \t]*:[ \t]*(.*)$/)
+    const m = lines[i].match(CONFIG_KEY_LINE)
     if (!m) continue
     const key = m[2]
     // key đầu tiên CÓ GIÁ TRỊ thắng; khai báo rỗng/placeholder không giữ chỗ
@@ -146,8 +155,9 @@ function readProjectConfig() {
   if (fs.existsSync(jsonPath)) {
     try {
       const raw = JSON.parse(fs.readFileSync(jsonPath, 'utf8')) || {}
-      for (const k of HOOK_KEYS) {
+      for (const k of CONFIG_KEYS) {
         if (typeof raw[k] === 'string' && raw[k].trim()) cfg[k] = raw[k].trim()
+        else if (typeof raw[k] === 'number' || typeof raw[k] === 'boolean') cfg[k] = String(raw[k])
       }
     } catch (e) {
       console.error(`⚠ project-config.json không parse được: ${e.message} — bỏ qua hook`)
@@ -158,8 +168,8 @@ function readProjectConfig() {
   if (fs.existsSync(mdPath)) {
     let txt = ''
     try { txt = fs.readFileSync(mdPath, 'utf8') } catch { txt = '' }
-    const fromMd = parseHookKeysFromMarkdown(txt)
-    for (const k of HOOK_KEYS) {
+    const fromMd = parseConfigKeysFromMarkdown(txt)
+    for (const k of CONFIG_KEYS) {
       if (cfg[k]) continue
       if (fromMd[k]) cfg[k] = fromMd[k]
     }
@@ -167,14 +177,73 @@ function readProjectConfig() {
   return cfg
 }
 
+// Hạ tầng test: port base (số) và cờ require_infra. Sai kiểu → coi như chưa cấu hình.
+function infraConfig(cfg) {
+  const base = Number.parseInt(cfg.test_infra_port_base, 10)
+  return {
+    portBase: Number.isInteger(base) && base > 0 && base < 65000 ? base : null,
+    requireInfra: /^(true|yes|1)$/i.test(cfg.require_infra || ''),
+  }
+}
+
+// ── slot port cố định cho từng worktree (.worktrees/.ports.json: { slug: slot }) ──
+// Slot thấp nhất còn trống, giữ nguyên suốt đời worktree; cleanup trả slot lại.
+const PORTS_FILE = path.join(ROOT, '.worktrees', '.ports.json')
+
+function readPortSlots() {
+  try { return JSON.parse(fs.readFileSync(PORTS_FILE, 'utf8')) || {} } catch { return {} }
+}
+function writePortSlots(slots) {
+  fs.mkdirSync(path.dirname(PORTS_FILE), { recursive: true })
+  const tmp = `${PORTS_FILE}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(slots, null, 2) + '\n')
+  fs.renameSync(tmp, PORTS_FILE)
+}
+// Khoá bằng mkdir (atomic) để 2 lệnh setup chạy song song không nhận trùng slot.
+function withPortsLock(fn) {
+  const lock = `${PORTS_FILE}.lock`
+  fs.mkdirSync(path.dirname(PORTS_FILE), { recursive: true })
+  let held = false
+  for (let i = 0; i < 200 && !held; i++) {
+    try { fs.mkdirSync(lock); held = true } catch (e) {
+      if (e.code !== 'EEXIST') throw e
+      try { if (Date.now() - fs.statSync(lock).mtimeMs > 10000) fs.rmdirSync(lock) } catch { /* lock vừa được nhả */ }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25)
+    }
+  }
+  if (!held) die(`không lấy được khoá ${path.relative(ROOT, lock)} — xoá thư mục khoá nếu không còn setup/cleanup nào chạy`)
+  try { return fn() } finally { fs.rmdirSync(lock) }
+}
+function claimPortSlot(slug) {
+  return withPortsLock(() => {
+    const slots = readPortSlots()
+    if (Number.isInteger(slots[slug])) return slots[slug]
+    const used = new Set(Object.values(slots))
+    let slot = 1
+    while (used.has(slot)) slot++
+    slots[slug] = slot
+    writePortSlots(slots)
+    return slot
+  })
+}
+function releasePortSlot(slug) {
+  withPortsLock(() => {
+    const slots = readPortSlots()
+    if (!(slug in slots)) return
+    delete slots[slug]
+    writePortSlots(slots)
+  })
+}
+
 // Chạy hook qua shell (hook là chuỗi lệnh của project). Fail → cảnh báo, KHÔNG chặn luồng chính.
-function runHook(cmd, { cwd, task, slug, label }) {
+function runHook(cmd, { cwd, task, slug, label, extraEnv = {} }) {
   if (!cmd) return { ran: false, skipped: true }
   const env = {
     ...process.env,
     WORKTREE_PATH: cwd,
     TASK_ID: task,
     WORKTREE_SLUG: slug,
+    ...extraEnv,
   }
   try {
     const out = execFileSync('sh', ['-c', cmd], {
@@ -321,18 +390,35 @@ function cmdSetup(args) {
 
   // hook riêng của project: tạo DB riêng + .env.local riêng cho worktree này
   const cfg = readProjectConfig()
+  const { portBase, requireInfra } = infraConfig(cfg)
+  const slug = taskSlug(taskId)
+  const infra = portBase ? portEnv(portBase, claimPortSlot(slug)) : null
   const hook = runHook(cfg.worktree_setup_cmd, {
-    cwd: wt, task: taskId, slug: taskSlug(taskId), label: 'worktree_setup',
+    cwd: wt, task: taskId, slug, label: 'worktree_setup', extraEnv: infra || {},
   })
 
-  console.log(JSON.stringify({
+  const result = {
     task: taskId,
     unit,
     worktree: path.relative(ROOT, wt),
     branch: br,
     base: integrationBranch(unit),
+    infra: infra ? { port: Number(infra.WORKTREE_PORT), slot: Number(infra.WORKTREE_SLOT) } : null,
+    requireInfra,
     setupHook: hook.ran ? (hook.ok ? 'ok' : 'FAILED (xem stderr)') : 'skipped (chưa khai worktree_setup_cmd)',
-  }, null, 2))
+  }
+  console.log(JSON.stringify(result, null, 2))
+  // require_infra: test cần DB/storage không được skip → hạ tầng không dựng được thì chặn build ngay
+  if (requireInfra && hook.ran && !hook.ok) {
+    die(`require_infra: true nhưng worktree_setup hook FAIL cho ${taskId} — KHÔNG giao task cho builder. Worktree giữ nguyên để debug; sửa hạ tầng rồi chạy cleanup rồi setup lại.`)
+  }
+  if (requireInfra && !hook.ran) {
+    die('require_infra: true nhưng chưa khai worktree_setup_cmd — không có gì dựng hạ tầng test cho worktree. Khai hook (và test_infra_port_base) hoặc tắt require_infra.')
+  }
+}
+
+function portEnv(portBase, slot) {
+  return { WORKTREE_PORT: String(portBase + slot), WORKTREE_SLOT: String(slot) }
 }
 
 function currentOrIntegration() {
@@ -344,7 +430,9 @@ function ensureIntegrationBranch(unit, base) {
   const exists = shTry('git', ['show-ref', '--verify', '--quiet', `refs/heads/${ib}`]).ok
   if (!exists) {
     const r = shTry('git', ['branch', ib, base])
-    if (!r.ok) die(`tạo integration branch lỗi: ${r.err}`)
+    // setup song song: lệnh khác vừa tạo branch này → không phải lỗi
+    const createdMeanwhile = shTry('git', ['show-ref', '--verify', '--quiet', `refs/heads/${ib}`]).ok
+    if (!r.ok && !createdMeanwhile) die(`tạo integration branch lỗi: ${r.err}`)
   }
 }
 
@@ -398,13 +486,17 @@ function cmdCleanup(args) {
       // teardown hook TRƯỚC khi xoá (drop DB tạm, dọn .env.local riêng…)
       const slug = path.basename(p)
       const taskId = slug.replace(/__/g, '/')
+      const slot = readPortSlots()[slug]
+      const { portBase } = infraConfig(cfg)
       const hook = runHook(cfg.worktree_teardown_cmd, {
         cwd: p, task: taskId, slug, label: 'worktree_teardown',
+        extraEnv: portBase && Number.isInteger(slot) ? portEnv(portBase, slot) : {},
       })
       if (hook.ran && !hook.ok) {
         console.error(`⚠ bỏ qua teardown lỗi cho ${path.relative(ROOT, p)} — vẫn xoá worktree`)
       }
       shTry('git', ['worktree', 'remove', '--force', p]); removed.push(path.relative(ROOT, p))
+      releasePortSlot(slug)
     }
   }
   // xoá branch wt/<unit>__*
@@ -422,7 +514,11 @@ function cmdCleanup(args) {
 function cmdStatus() {
   const wt = shTry('git', ['worktree', 'list']).out
   const br = shTry('git', ['for-each-ref', '--format=%(refname:short)', 'refs/heads/wt/']).out
-  console.log('=== worktrees ===\n' + wt + '\n\n=== wt/ branches ===\n' + (br || '(none)'))
+  const { portBase } = infraConfig(readProjectConfig())
+  const slots = Object.entries(readPortSlots())
+    .map(([slug, slot]) => `${slug}  slot ${slot}${portBase ? `  port ${portBase + slot}` : ''}`).join('\n')
+  console.log('=== worktrees ===\n' + wt + '\n\n=== wt/ branches ===\n' + (br || '(none)') +
+    '\n\n=== test infra ports ===\n' + (slots || '(none)'))
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────

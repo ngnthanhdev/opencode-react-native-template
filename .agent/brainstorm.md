@@ -52,7 +52,7 @@
 | 1 | **Git & branch** | `target_branch`, `forbidden_branch`, `auto_push_after_pass` | hỏi |
 | 2 | **Stack & source** | `package_manager`, `source_roots` | auto-detect + confirm |
 | 3 | **Verify commands** | `install`/`lint`/`typecheck`/`test`/`build` (+ web/api split) | auto-detect + confirm |
-| 4 | **Database & migration** | `db_tool`, `migration_required`, `staging_db`, `prod_db`, `migration_command` | auto-detect + confirm |
+| 4 | **Database & migration** | `db_tool`, `migration_required`, `staging_db`, `prod_db`, `migration_command`, hạ tầng test (`test_infra_port_base`, `require_infra`, `integration_test_command`, `infra_up_command`, `worktree_setup_cmd`/`worktree_teardown_cmd`) | auto-detect + confirm |
 | 5 | **Models per role** | `models.builder`, `builder_strong`, `reviewer`, `spec_validator`, `change_request` | hỏi |
 | 6 | **Deploy & CI-CD** | `deploy_platform`, `ci_cd` (+ host/project fields) | hỏi |
 | 7 | **Monitoring & UI** | `monitor_enabled`, `otel_service_name`, `otel_env`, `ui.*`, `secrets.required` | hỏi |
@@ -77,6 +77,10 @@
 - Confirm `db_tool` (`none|prisma|drizzle|other`), `migration_required`.
 - Chỉ khi `db_tool != none`: hỏi `staging_db`, `prod_db` — ghi **tên env var**, KHÔNG ghi secret; bắt buộc khác nhau (trùng → báo user, dừng nhóm).
 - Hỏi `migration_command` nếu có lệnh migrate riêng.
+- Có integration test cần DB/storage (hoặc `db_tool != none`) → đề xuất bật hạ tầng test bắt buộc:
+  `test_infra_port_base` (vd `55432`, tránh port mặc định của máy dev), `require_infra: true`,
+  `integration_test_command` (tự set `REQUIRE_INFRA=1`), `infra_up_command`, và hook worktree dựng DB
+  trên `$WORKTREE_PORT` (mẫu Docker Compose trong `project-config.md`). User chưa có Docker → để `false`.
 
 **Nhóm 5 — Models per role**
 - Hỏi 5 vai: `builder`, `builder_strong` (chỉ dùng khi user yêu cầu rõ), `reviewer`, `spec_validator`, `change_request`.

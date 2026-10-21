@@ -60,6 +60,10 @@ Quy tắc bắt buộc:
   keyboard handling (KeyboardAvoidingView), xoay màn hình/orientation, không hardcode px cố định.
 - Chạy **đúng verify commands** trong profile trước khi báo xong. Không hardcode `npm`/`pnpm`/Prisma.
   Nếu project chưa cấu hình stack/app code → hỏi hoặc ghi `skip, no app configured`.
+- **Hạ tầng test:** nếu `project-config.md` khai `integration_test_command` → BẮT BUỘC chạy lệnh đó trong
+  worktree (hạ tầng dựng trên port riêng của worktree, đọc `.env.local` / `infra.port` từ output `setup`).
+  Với `require_infra: true`, test cần DB/storage bị **skip = FAIL**, không được báo PASS. KHÔNG nối tới port
+  mặc định của máy dev (vd Postgres 5432) và không tự dựng DB trên port ngẫu nhiên.
 - Ghi file đổi + kết quả test vào completion report.
 - Với bug task: **original repro còn tái hiện = chưa hoàn thành**. Không được trả `Task completed: yes`
   nếu repro status là `FAIL`, `BLOCKED`, hoặc chưa verify. Phải tiếp tục diagnose/fix trong cùng task

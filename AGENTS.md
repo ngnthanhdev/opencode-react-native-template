@@ -166,6 +166,8 @@ Code ≠ intent → ghi gap vào gap register (nếu có, vd `docs/changes/TECHN
 - **Check commands lấy từ `.context/project-config.md`** — không hardcode `npm`.
 - Nếu repo chưa có app code/API/web/test hoặc command chưa cấu hình → verify ghi `skip, no app configured`,
   không hardcode package manager/test command và không fail workflow vì thiếu app.
+- `require_infra: true` (`.context/project-config.md`) → test cần DB/storage **không được skip**: builder chạy
+  `integration_test_command` trên port cố định của worktree, bước merge chạy lại trên checkout chính (port base); skip = FAIL.
 - **Migration safety** chỉ áp dụng khi `db_tool != none` / `migration_required: true`
   (`.context/project-config.md`); `db_tool: none` → bỏ qua gate migration.
 - Khi migration gate áp dụng: migration phải versioned + committed; không sửa migration đã apply.
