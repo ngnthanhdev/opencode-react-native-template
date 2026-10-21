@@ -73,3 +73,4 @@ Chạy **Project Start** — chuỗi khởi tạo **chạy liên tục** cho rep
 - `/spec-init`, `/brainstorm`, `/design`, `/graph` vẫn tồn tại để **chạy tay/chạy lại** khi cần — không bắt buộc trong `/start`.
 - Sau khi dự án build xong: mọi thay đổi đi qua `/change` (agent `change-request`), không chạy lại `/start`.
 - HARD-GATE: không code trước khi design approve; không chạy layer N+1 trước khi layer N PASS + user approve.
+- Bảng từng bước (agent/skill/output/gate): `.agent/start-pipeline.md`. Mỗi lần gọi subagent → Run Journal write-ahead theo `.agent/session-handoff.md`; close-out task → `.agent/doc-reconcile.md`.

@@ -56,6 +56,8 @@ Bạn là **Spec Validator độc lập** — **không sửa code/source** (edit
 3. Nguồn cần validate: `SPECIFICATIONS.md`, spec delta, `docs/**` (BRD/DESIGN/API_SPEC/ERD),
    code hiện tại + `docs/` (nếu có).
 4. Task/phase cần kiểm.
+5. Khi đánh giá gap code ≠ intent: `.agent/doc-reconcile.md` § Doc Impact & Reconcile Rules (as-built vs intent,
+   gap register) — tách khỏi `AGENTS.md`, không nạp tự động.
 
 Không dùng bash để search/read source; search/read phải dùng Grep/Glob/Read.
 

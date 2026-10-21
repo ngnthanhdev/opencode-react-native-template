@@ -136,7 +136,7 @@ feature (<ADDITIVE|MODIFY|REMOVE>) | bug
 4. Task nhỏ, focused (1–3 files). Acceptance criteria **testable**, không mơ hồ.
 5. Không nhảy phase: schema → API → UI → integration → UAT.
 6. Không sửa tay task sau khi đã chạy — tạo task mới nếu cần. **WIP/checkpoint ghi ở
-   `.context/runs/<type>-<slug>-<phaseTask>.md`** (xem `AGENTS.md` § Session Handoff), không nhét vào task file.
+   `.context/runs/<type>-<slug>-<phaseTask>.md`** (xem `.agent/session-handoff.md`), không nhét vào task file.
 7. `tasks/bug-<slug>/scan.md` sinh bởi `/bug-check` là **read-only report** — không sửa code,
    không phải task; user chọn defect xong mới tạo task `/bug` cho từng defect.
 8. Mọi task bug/feature/update phải có `Classification / Risk`, `Retry / Error Memory`,

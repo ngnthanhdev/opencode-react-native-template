@@ -16,6 +16,9 @@ Wrapper gọi `.agent/change-request.md`. Đây là agent **duy nhất** cho tha
 - Bất kỳ yêu cầu thêm/sửa/xoá feature hoặc fix bug **sau khi project đã build xong lần đầu**.
 
 ## Việc phải làm
+Luật tách khỏi `AGENTS.md` (**không** nạp tự động) — Read trước khi chạy: `.agent/session-handoff.md` (Run Journal
+write-ahead trước/sau mỗi subagent, banner, redo) + `.agent/doc-reconcile.md` (Commit-First + Doc Impact & Reconcile trước close-out).
+
 Đọc + thực thi đầy đủ quy trình trong `.agent/change-request.md`:
 1. Nguồn yêu cầu: file trong `spec/changes/` (nếu qua `/change`) hoặc mô tả trực tiếp.
 2. Classify: **ADDITIVE / MODIFY / REMOVE / BUG**.

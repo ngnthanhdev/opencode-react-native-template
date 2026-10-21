@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * loop-guard — Session handoff support (xem AGENTS.md § Session Handoff).
+ * loop-guard — Session handoff support (xem .agent/session-handoff.md).
  *
  * Cung cấp:
  *  - tool `usage()`: đo context occupancy của session hiện tại.
@@ -159,7 +159,7 @@ export default (async ({ client, directory }) => {
             "## Session handoff (bắt buộc)",
             "Sau compact PHẢI re-read Run Journal `.context/runs/<type>-<slug>-<phaseTask>.md` từ đĩa",
             "trước khi tiếp tục — đĩa là sự thật, pointer (`progress.json`) chỉ là hint.",
-            "Xem `AGENTS.md` § Session Handoff (write-ahead checkpoint, resume matrix, redo policy).",
+            "Xem `.agent/session-handoff.md` (write-ahead checkpoint, redo policy) + resume matrix ở `.agent/FEATURE_WORKFLOW.md`.",
           ].join("\n"),
         );
       } catch {

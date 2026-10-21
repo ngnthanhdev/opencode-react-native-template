@@ -83,7 +83,7 @@ Quy tắc bắt buộc:
 4. Builder code + test; Reviewer kiểm tra độc lập (không sửa source; chỉ ghi report scoped).
 5. **Bắt buộc update `.context/progress.json`** (schema maintenance tối thiểu) khi bug đổi trạng thái
    (`bugs[]`, `activeWorkItem`). `done` chỉ khi repro status `PASS` **và** reviewer PASS.
-6. **Bắt buộc Run Journal** (bug có task, `tasks/bug-<slug>/...` — xem `AGENTS.md` § Session Handoff):
+6. **Bắt buộc Run Journal** (bug có task, `tasks/bug-<slug>/...` — xem `.agent/session-handoff.md`):
    tạo `.context/runs/bug-<slug>-<phaseTask>.md` từ `_TEMPLATE.md`. Write-ahead checkpoint: TRƯỚC khi gọi
    Builder/Reviewer ghi `step`/`status: running` + in `▶ START`; SAU khi subagent trả về ghi `evidence`/`next`
    + in `✅ DONE`. `interrupted ≠ failed` (bị cắt ngang → redo step, KHÔNG tăng `attempt`).
@@ -103,6 +103,6 @@ Quy tắc bắt buộc:
 11. Mỗi failed attempt phải append `.context/error-memory.md` hoặc ghi rõ vì sao không có entry.
 12. Nếu fix làm đổi kiến trúc/ownership/scope boundary/API contract/mock-real boundary → append `.context/decisions.md`.
 13. Verify commands lấy từ `.context/project-config.md`; nếu command chưa cấu hình hoặc chưa có app code → ghi `skip, no app configured`, không tự hardcode package manager/test command.
-14. Trước khi báo xong/đóng bug phải chạy **Doc Impact & Reconcile** trong `AGENTS.md` + `.agent/FEATURE_WORKFLOW.md`:
+14. Trước khi báo xong/đóng bug phải chạy **Doc Impact & Reconcile** trong `.agent/doc-reconcile.md` + `.agent/FEATURE_WORKFLOW.md`:
     reconcile as-built docs nếu code đổi hoặc ghi rõ `no doc impact`. **Không** sửa intent docs để khớp code;
     code ≠ intent thì ghi gap register nếu có.

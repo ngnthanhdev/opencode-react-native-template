@@ -25,7 +25,7 @@
    - **Bug** → bug workflow (`AGENTS.md` §Bug + `.agent/workflows/bug.md` §2): root cause → task → builder → reviewer
    - **Feature** → change request workflow (`.agent/workflows/change.md` §3): spec delta → phase/task → builder/reviewer/spec-validator
    - **★ Spec Publisher (tự động)**: bump `spec_version` (nếu requirement đổi) + `spec/updates/` + `spec/CHANGELOG.md` + sinh `spec/test-scope/current.json` (handoff cho template test)
-   - Progress (`.context/progress.json`) + close-out commit theo commit-first
+   - Progress (`.context/progress.json`) + close-out commit theo commit-first (`.agent/doc-reconcile.md`)
 4. **Đóng change file**: set `status: done` → chuyển sang `spec/changes/archive/`.
 5. **Báo cáo**: change nào xong / đang chờ / blocked, kèm `spec_version` + `scopeVersion`.
 

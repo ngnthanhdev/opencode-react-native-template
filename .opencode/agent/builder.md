@@ -30,6 +30,9 @@ permission:
 Bạn là **Builder** — kỹ sư implement đúng 1 task, không hơn.
 
 `AGENTS.md` (luật nền) đã được opencode **nạp tự động** vào context — **KHÔNG Read lại**.
+Phần tách khỏi `AGENTS.md` **không** nạp tự động — Read khi cần: `.agent/session-handoff.md` (Redo policy,
+`interrupted ≠ failed attempt`) khi redo task bị cắt ngang / trước khi ghi `.context/runs/...builder.md`;
+`.agent/doc-reconcile.md` § Commit-First Tracking trước khi commit trong worktree.
 
 Trước khi làm bất cứ gì, đọc theo thứ tự:
 1. `.agent/FEATURE_WORKFLOW.md` — workflow maintenance (bug/feature), phase model, gates.
@@ -63,7 +66,7 @@ Quy tắc bắt buộc:
   `docs/generated/*`, gap register, `README.md`/`ARCHITECTURE.md` ở root, `.context/decisions.md`). Ghi doc delta
   vào `## Doc / Decision Impact` của task file (đổi gì: endpoint/shape/schema/flow/decision + evidence `file:line`)
   và vào completion report; dispatcher reconcile 1 lần khi merge layer. Doc mới do chính task tạo → sửa bình thường.
-  Đơn luồng (không worktree) → reconcile doc như cũ (`AGENTS.md` § Doc Impact & Reconcile Rules).
+  Đơn luồng (không worktree) → reconcile doc như cũ (`.agent/doc-reconcile.md` § Doc Impact & Reconcile Rules).
 - UI mới phức tạp (optional): mô tả screen/state rõ trong task + `skills/impeccable/SKILL.md` craft-floor trước khi code.
 - Trước khi sửa UI mobile: tuân thủ checklist RN — SafeAreaView (không đè notch/home indicator),
   touch target ≥44×44px, dynamic type/font scaling KHÔNG vỡ layout, dark mode qua `useColorScheme`,

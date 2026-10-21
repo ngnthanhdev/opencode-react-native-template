@@ -1,7 +1,7 @@
 # Run Journal — <type>/<slug> · phase-<N>-task-<NN>
 
 > Artifact trạng thái để **resume cross-session**. **Primary ghi file này; subagent KHÔNG ghi.**
-> Đọc file này **ĐẦU TIÊN** khi mở session mới (xem `AGENTS.md` § Session Handoff).
+> Đọc file này **ĐẦU TIÊN** khi mở session mới (xem `.agent/session-handoff.md`).
 > Copy template này thành `.context/runs/<type>-<slug>-<phaseTask>.md` khi bắt đầu task.
 
 ```yaml

@@ -162,7 +162,7 @@ Khi có work item, có thể mở rộng trong `features[]` / `bugs[]`:
   `docs/generated/*` nếu có; kiến trúc/flow/current behavior → `docs/DESIGN.md` current-state; gap đã giải quyết
   → đổi status gap register. Không đổi contract/schema/behavior tài liệu hoá → ghi rõ `no doc impact`.
   Builder chạy worktree song song → KHÔNG sửa doc dùng chung, chỉ ghi doc delta vào task file; dispatcher reconcile
-  1 lần trên integration branch khi merge layer (`AGENTS.md` § Doc Impact & Reconcile Rules, `.agent/loop.md` Merge steps).
+  1 lần trên integration branch khi merge layer (`.agent/doc-reconcile.md` § Doc Impact & Reconcile Rules, `.agent/loop.md` Merge steps).
 - **As-built vs intent**: as-built docs (`docs/API_SPEC.md`, `docs/ERD.md`, `docs/DESIGN.md` current-state,
   generated inventory, gap register status) được reconcile khi code đổi, kèm evidence code. Intent docs
   (`docs/BRD.md`, `docs/PRD.md`, `docs/USER_FLOW.md` target, business rules trong `SPECIFICATIONS.md` nếu có)
@@ -186,7 +186,7 @@ Khi có work item, có thể mở rộng trong `features[]` / `bugs[]`:
   Primary ghi; subagent không ghi. WIP/checkpoint **KHÔNG** ghi vào task file.
 - **Agent attribution (bắt buộc):** TRƯỚC khi gọi subagent ghi `agent: <tên>` vào journal; banner
   `▶ START [agent: X]` / `✅ DONE [agent: X]`; completion report của subagent mở đầu bằng `Agent: <tên>`.
-- **Luật đầy đủ:** `AGENTS.md` § Session Handoff (write-ahead checkpoint, banner, Session Start Protocol).
+- **Luật đầy đủ:** `.agent/session-handoff.md` (write-ahead checkpoint, banner, Session Start Protocol).
 - **Resume matrix** (journal `step`/`status` → việc session mới làm):
 
   | Cancel ở | journal | Session mới làm |
@@ -220,7 +220,7 @@ Khi có work item, có thể mở rộng trong `features[]` / `bugs[]`:
 - **Nguyên tắc:** đĩa là sự thật, pointer (`progress.json`) chỉ là hint; `interrupted ≠ failed attempt`.
 - **Report path:** journal lưu `evidence.reportPath` **chính xác** — resume không parse tên file report.
 - **Usage gate:** `.context/session-policy.json` (`usageGate`); ở mỗi checkpoint gọi tool `usage()`,
-  vượt ngưỡng thì hỏi user End/Làm tiếp (xem `AGENTS.md` § Session Handoff).
+  vượt ngưỡng thì hỏi user End/Làm tiếp (xem `.agent/session-handoff.md`).
 
 ### Check commands
 Lấy từ `.context/project-config.md` → các field `lint_command`, `typecheck_command`,

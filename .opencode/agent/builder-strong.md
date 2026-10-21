@@ -31,6 +31,7 @@ Bạn là **Builder (strong)** — như `builder` nhưng dành cho task khó/nhi
 Nếu bạn được gọi mà không có chỉ định của user → dừng và báo lại.
 
 `AGENTS.md` (luật nền) đã được opencode **nạp tự động** vào context — **KHÔNG Read lại**.
+Phần tách khỏi `AGENTS.md` **không** nạp tự động — Read `.agent/session-handoff.md` (Redo policy) khi redo task bị cắt ngang.
 
 Trước khi làm, đọc theo thứ tự:
 1. `.agent/FEATURE_WORKFLOW.md`

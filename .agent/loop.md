@@ -59,7 +59,7 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
        thay vì cả SPECIFICATIONS.md/design-spec.md); chỉ touch file trong scope;
        chạy cả integration_test_command (nếu khai) trên port <infra.port>;
        commit trong worktree; KHÔNG ghi progress.json; KHÔNG sửa doc dùng chung
-       (AGENTS.md § Doc Impact & Reconcile Rules) — ghi doc delta vào `## Doc / Decision Impact`
+       (`.agent/doc-reconcile.md` § Doc Impact & Reconcile Rules) — ghi doc delta vào `## Doc / Decision Impact`
        của task file + completion report; báo PASS/BLOCKED về."
       ngay TRƯỚC khi spawn, đánh dấu agent đang sống (display-only):
       node tools/task-dashboard/agent-live.mjs enter --agent builder-<n> --role builder \
@@ -92,7 +92,7 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
 2b. Doc reconcile 1 LẦN trên integration branch (builder song song không sửa doc dùng chung):
    đọc `## Doc / Decision Impact` của MỌI task đã merge → cập nhật as-built docs (`docs/API_SPEC.md`,
    `docs/ERD.md`, `docs/DESIGN.md`, gap register, `README.md`/`ARCHITECTURE.md`, `.context/decisions.md`)
-   theo bảng ở AGENTS.md § Doc Impact & Reconcile Rules → regen `docs/generated/*` nếu có cấu hình
+   theo bảng ở `.agent/doc-reconcile.md` § Doc Impact & Reconcile Rules → regen `docs/generated/*` nếu có cấu hình
    → 1 commit `docs(layer-<N>): reconcile as-built docs`. Mọi task `no doc impact` → bỏ qua bước này.
    KHÔNG sửa intent docs cho khớp code (code ≠ intent → ghi gap register).
 3. Áp quyết định owner vào spec: node tools/task-dashboard/progress-write.mjs spec-patch list
@@ -100,7 +100,7 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
      `initial-build` đầy đủ ở mục Spec Publish bên dưới) → dispatcher `spec-patch clear --ids <Applied>` /
      `spec-patch note --id <id> --note "..."` cho entry Unmapped → commit spec cùng close-out layer.
    → `count = 0` → bỏ qua.
-4. spec-validator review layer (AGENTS.md bước 5g) — check theo spec ĐÃ vá ở bước 3. FAIL → về loop sửa gap, KHÔNG merge về nhánh chính.
+4. spec-validator review layer (`.agent/start-pipeline.md` bước 5g) — check theo spec ĐÃ vá ở bước 3. FAIL → về loop sửa gap, KHÔNG merge về nhánh chính.
 5. Update `.context/progress.json` 1 LẦN — DÙNG HELPER, đừng tự viết JSON tay:
      node tools/task-dashboard/progress-write.mjs complete --task <layer-N/task-NN> \
           --review "STRICT PASS" --round <R> [--report <review-report path>]

@@ -189,6 +189,9 @@ project-template/
 │
 ├── .agent/
 │   ├── FEATURE_WORKFLOW.md       ← ✅ Workflow entry (bug/feature/update) — minimal; details in workflows/
+│   ├── session-handoff.md        ← Run Journal / Session Handoff rules (split from AGENTS.md, read on demand)
+│   ├── doc-reconcile.md          ← Commit-First Tracking + Doc Impact & Reconcile (split from AGENTS.md)
+│   ├── start-pipeline.md         ← Full command table + /start step-by-step (split from AGENTS.md)
 │   ├── workflows/                ← Detailed per-workflow files (loaded on demand, not every turn)
 │   │   ├── bug.md                ← §2 Bug workflow + §2b bug discovery sweep
 │   │   ├── change.md             ← §3 Change Request workflow (feature / update)
@@ -287,7 +290,7 @@ project-template/
 | "review / check" | **reviewer** subagent — never edits code |
 | question / investigation | research-only — no edits |
 
-Unclear intent → ask one short question, don't guess. Details: `AGENTS.md` + `.agent/FEATURE_WORKFLOW.md`.
+Unclear intent → ask one short question, don't guess. Details: `AGENTS.md` + `.agent/FEATURE_WORKFLOW.md` (on-demand detail split out of `AGENTS.md`: `.agent/session-handoff.md`, `.agent/doc-reconcile.md`, `.agent/start-pipeline.md`).
 
 ## 🔒 Security Integration
 
@@ -412,7 +415,7 @@ spec/changes/<file>.md → /change → agent change-request
 
 | Step | What | Subagent | Prompt-level | Skill | Output | Gate |
 |---|---|---|---|---|---|---|
-| **0** | Session start / resume | — | `AGENTS.md`, `.agent/blackboard.md` | — | reads `progress.json` (`activeWorkItem`); if in-progress → `/resume` | — |
+| **0** | Session start / resume | — | `AGENTS.md`, `.agent/session-handoff.md`, `.agent/blackboard.md` | — | reads `progress.json` (`activeWorkItem`); if in-progress → `/resume` | — |
 | **1a** | Build spec from code (if none) | **`spec-init`** | `.agent/spec-init.md` | — | `SPECIFICATIONS.md` + `spec/` + `spec/test-scope/current.json` | read-only, once |
 | **1b** | Validate spec vs code/docs | **`spec-validator`** | `.agent/spec-validator.md` | — | report `.context/review-reports/spec-validation.md` | PASS → step 2 · FAIL → clarify, re-validate (max 2 rounds) |
 | **2** | Clarify requirements + set config | — | `.agent/brainstorm.md` | `brainstorming` | design doc `docs/specs/*.md` + `.context/project-config.md` (+ secrets → `.env.local`) | ⏸ **approve design** — HARD-GATE: no code before approval |
@@ -428,7 +431,7 @@ spec/changes/<file>.md → /change → agent change-request
 | **6** | Git init / EAS build / store deploy | — | `.agent/devops.md` (+ `.devops/templates/*`) | — | git repo, EAS profiles, build preview → store submit | ⏸ **approve production submit** |
 | **7** | Rollback on failure | — | `.agent/rollback.md` | — | tag `layer-N-done`, revert to checkpoint | notify human |
 
-**Runtime hand-off:** every subagent call writes the Run Journal **write-ahead** (`.context/runs/<type>-<slug>-<phaseTask>.md`), printing `▶ START` before / `✅ DONE` after (§ Session Handoff).
+**Runtime hand-off:** every subagent call writes the Run Journal **write-ahead** (`.context/runs/<type>-<slug>-<phaseTask>.md`), printing `▶ START` before / `✅ DONE` after (`.agent/session-handoff.md`).
 
 ### After the build — every change goes through one agent
 

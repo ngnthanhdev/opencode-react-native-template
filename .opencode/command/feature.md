@@ -11,7 +11,7 @@ Chạy Change Request workflow trong `AGENTS.md` và `.agent/workflows/change.md
 Nếu `$ARGUMENTS` là **làm tiếp phase N của feature đang có** (vd "tiếp phase 3", "continue phase 3 feature-x"):
 → **KHÔNG** classify lại / tạo phase plan mới. Đọc `.context/progress.json` + Run Journal
 `.context/runs/feature-<slug>-phase-<N>-*.md`, rồi chạy Session Start Protocol
-(`AGENTS.md` § Session Handoff) — tương đương `/resume feature/<slug>`.
+(`.agent/session-handoff.md`) — tương đương `/resume feature/<slug>`.
 Khi ở nhánh continue: **bỏ qua rule 1 (classify), 5 (chia phase/task), 6 (trình phase plan)** — chỉ áp dụng
 các rule còn lại cho phase đang dở.
 
@@ -50,7 +50,7 @@ Quy tắc bắt buộc:
 13. Mỗi failed attempt phải append `.context/error-memory.md` hoặc ghi rõ vì sao không có entry.
 14. Nếu update làm đổi kiến trúc/ownership/scope boundary/API contract/mock-real boundary → append `.context/decisions.md`.
 15. Verify commands lấy từ `.context/project-config.md`; nếu command chưa cấu hình hoặc chưa có app code → ghi `skip, no app configured`, không tự hardcode package manager/test command.
-16. Trước khi báo xong/đóng task/phase phải chạy **Doc Impact & Reconcile** trong `AGENTS.md` + `.agent/FEATURE_WORKFLOW.md`:
+16. Trước khi báo xong/đóng task/phase phải chạy **Doc Impact & Reconcile** trong `.agent/doc-reconcile.md` + `.agent/FEATURE_WORKFLOW.md`:
     reconcile as-built docs nếu code đổi hoặc ghi rõ `no doc impact`. **Không** sửa intent docs để khớp code;
     code ≠ intent thì ghi gap register nếu có.
 17. Nếu đầu vào là danh sách feature → tách mỗi feature thành task riêng, chốt ưu tiên, xử lý tuần tự.

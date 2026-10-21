@@ -2,7 +2,7 @@
 description: Resume công việc dở dang từ Run Journal (không classify lại). Dùng khi mở session mới để làm tiếp.
 ---
 
-Chạy **Session Start Protocol** trong `AGENTS.md` § Session Handoff để resume công việc.
+Chạy **Session Start Protocol** trong `.agent/session-handoff.md` để resume công việc.
 
 Tham số (tùy chọn): `$ARGUMENTS` — có thể là `<type>/<slug>` (vd `feature/schedule-change-requests`);
 để trống → dùng `activeWorkItem` trong `.context/progress.json`.
