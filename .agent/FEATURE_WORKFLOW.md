@@ -59,7 +59,7 @@ Repo chưa cài tool / không có app code / không áp dụng → ghi `N/A` ho�
 |---|---|---|
 | `skills/anti-slop/SKILL.md` | Builder + Reviewer, task đụng TS/JS | `npx oxlint` (khi repo có oxlint config); error mới → FAIL. Bổ trợ `aislop` (mùi nội dung) bằng mùi kiểu dáng code |
 | `skills/open-code-review/SKILL.md` | Reviewer, task code change | `ocr review`/`ocr delegate`; **CRITICAL** (XSS/SQLi/NPE/thread-safety) → FAIL, ≥3 MAJOR → FAIL. Chưa cài `ocr` → ghi chú, không chặn PASS |
-| `skills/ai-readable-codebase/SKILL.md` | Reviewer mọi phase + Builder khi viết mới | AI-chaos indicators **≥3 → FAIL**; code mới đổi luồng chính phải cập nhật `README.md`/`ARCHITECTURE.md` |
+| `skills/ai-readable-codebase/SKILL.md` | Reviewer mọi phase + Builder khi viết mới | AI-chaos indicators **≥3 → FAIL**; code mới đổi luồng chính phải cập nhật `README.md`/`ARCHITECTURE.md` (worktree song song → ghi Doc Impact note, dispatcher reconcile) |
 | `skills/blitzstrike/SKILL.md` | Reviewer Phase 2 STRICT (optional) | pentest live trên môi trường được phép; chỉ finding **STRIKE-validated** mới tính FAIL; chưa cài/không môi trường → bỏ qua |
 | `skills/security/codex-security.md` | Reviewer, task nhạy cảm (auth/API/secrets, optional) | `npx @openai/codex-security scan <dir>` — CRITICAL **verified** → FAIL, ≥3 MAJOR → FAIL; chưa login/không network/không cài được → ghi `N/A` + lý do, không chặn PASS |
 | `skills/react-native/e2e-maestro.md` | Builder viết E2E + Reviewer task có flow UI | `maestro test .maestro/` trên emulator/simulator; flow fail → FAIL; không có device/môi trường → ghi `N/A`, không chặn PASS |
@@ -161,6 +161,8 @@ Khi có work item, có thể mở rộng trong `features[]` / `bugs[]`:
   API contract/endpoint/response shape → `docs/API_SPEC.md`; schema/model/enum → `docs/ERD.md` + regen
   `docs/generated/*` nếu có; kiến trúc/flow/current behavior → `docs/DESIGN.md` current-state; gap đã giải quyết
   → đổi status gap register. Không đổi contract/schema/behavior tài liệu hoá → ghi rõ `no doc impact`.
+  Builder chạy worktree song song → KHÔNG sửa doc dùng chung, chỉ ghi doc delta vào task file; dispatcher reconcile
+  1 lần trên integration branch khi merge layer (`AGENTS.md` § Doc Impact & Reconcile Rules, `.agent/loop.md` Merge steps).
 - **As-built vs intent**: as-built docs (`docs/API_SPEC.md`, `docs/ERD.md`, `docs/DESIGN.md` current-state,
   generated inventory, gap register status) được reconcile khi code đổi, kèm evidence code. Intent docs
   (`docs/BRD.md`, `docs/PRD.md`, `docs/USER_FLOW.md` target, business rules trong `SPECIFICATIONS.md` nếu có)

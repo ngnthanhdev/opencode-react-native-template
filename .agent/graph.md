@@ -96,7 +96,12 @@ build (initial) | feature | bug
 - [ ] Tests added + pass
 - [ ] Check commands pass (theo `.context/project-config.md`)
 - [ ] Reviewer độc lập PASS
+- [ ] Doc delta ghi ở `Doc / Decision Impact` (hoặc `no doc impact`)
 - [ ] committed
+
+## Doc / Decision Impact
+- Doc delta: <endpoint/shape/schema/flow/decision đổi + evidence `file:line`> | `no doc impact`
+  (builder song song KHÔNG sửa doc dùng chung — dispatcher reconcile 1 lần khi merge layer)
 
 ## Files to Create/Modify
 - `src/...`

@@ -27,7 +27,7 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
    └────┼────┘
         ▼  (tất cả PASS + committed)
   DISPATCHER tự merge (không spawn agent con): merge --layer N → verify tổng thể
-        → update progress.json 1 lần → cleanup
+        → doc reconcile 1 lần → update progress.json 1 lần → cleanup
         ▼
   HUMAN CHECKPOINT → layer N+1
 ```
@@ -58,7 +58,9 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
       "cd <worktree>; chạy FULL loop cho <task file>; spec context: <out tuyệt đối> (đọc file này
        thay vì cả SPECIFICATIONS.md/design-spec.md); chỉ touch file trong scope;
        chạy cả integration_test_command (nếu khai) trên port <infra.port>;
-       commit trong worktree; KHÔNG ghi progress.json; báo PASS/BLOCKED về."
+       commit trong worktree; KHÔNG ghi progress.json; KHÔNG sửa doc dùng chung
+       (AGENTS.md § Doc Impact & Reconcile Rules) — ghi doc delta vào `## Doc / Decision Impact`
+       của task file + completion report; báo PASS/BLOCKED về."
       ngay TRƯỚC khi spawn, đánh dấu agent đang sống (display-only):
       node tools/task-dashboard/agent-live.mjs enter --agent builder-<n> --role builder \
         --task <layer-N/task-NN> --title "<task title>" --phase building \
@@ -87,6 +89,12 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
 2. Verify TỔNG THỂ trên integration branch (typecheck/lint/test theo project-config) — từng task pass riêng KHÔNG đảm bảo ghép lại pass. FAIL → error-analyzer → fix → verify lại.
    Có `integration_test_command` → chạy `infra_up_command` (checkout chính, port base) rồi chạy lệnh đó;
    `require_infra: true` mà test hạ tầng bị skip = FAIL. Đây là chốt chặn để lỗi DB/storage không lộ lần đầu trên CI.
+2b. Doc reconcile 1 LẦN trên integration branch (builder song song không sửa doc dùng chung):
+   đọc `## Doc / Decision Impact` của MỌI task đã merge → cập nhật as-built docs (`docs/API_SPEC.md`,
+   `docs/ERD.md`, `docs/DESIGN.md`, gap register, `README.md`/`ARCHITECTURE.md`, `.context/decisions.md`)
+   theo bảng ở AGENTS.md § Doc Impact & Reconcile Rules → regen `docs/generated/*` nếu có cấu hình
+   → 1 commit `docs(layer-<N>): reconcile as-built docs`. Mọi task `no doc impact` → bỏ qua bước này.
+   KHÔNG sửa intent docs cho khớp code (code ≠ intent → ghi gap register).
 3. Update `.context/progress.json` 1 LẦN — DÙNG HELPER, đừng tự viết JSON tay:
      node tools/task-dashboard/progress-write.mjs complete --task <layer-N/task-NN> \
           --review "STRICT PASS" --round <R> [--report <review-report path>]
@@ -134,6 +142,8 @@ Lặp tới khi hết task:
    d. quay lại bước 1 (task mới có thể vừa được mở khoá).
 4. Mọi task của 1 layer đã merge = MILESTONE:
    • verify TỔNG THỂ trên build-integration (như Merge steps bước 2).
+   • doc reconcile 1 lần (như Merge steps bước 2b) cho mọi task đã merge kể từ milestone trước
+     → commit `docs(milestone-layer-<N>): reconcile as-built docs`.
    • spawn `spec-validator` cho layer đó **song song** với các task đang chạy/ready của layer sau —
      KHÔNG chặn dispatch. FAIL → NGỪNG dispatch task mới (task đang chạy vẫn chạy xong), báo human danh sách
      gap + task sửa đề xuất (dependency vào task liên quan); human duyệt → đưa task sửa vào vòng lặp rồi chạy tiếp.

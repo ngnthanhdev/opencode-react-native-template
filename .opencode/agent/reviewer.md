@@ -99,6 +99,9 @@ Phạm vi review (tùy loại task):
 - **AI-readable gate** mọi phase (`skills/ai-readable-codebase/SKILL.md` mục 6): soi AI-chaos indicators
   (tên mơ hồ, hàm >50 dòng, indirection >3 bước, magic number, comment WHAT, code mới không cập nhật
   README/ARCHITECTURE khi đổi luồng chính). **≥3 indicators → FAIL**.
+- **Doc impact (task chạy worktree song song)**: builder không được sửa doc dùng chung — dispatcher reconcile khi merge
+  layer. **KHÔNG** FAIL / không tính indicator vì "docs chưa cập nhật" nếu `## Doc / Decision Impact` của task ghi đủ
+  doc delta (+ evidence `file:line`); thiếu note trong khi code đổi contract/schema/flow → finding [MAJOR].
 - **Open Code Review gate** (optional, `skills/open-code-review/SKILL.md`): nếu có `ocr` → `ocr delegate preview`
   hoặc `ocr review --format json`; finding **CRITICAL** (XSS/SQLi/NPE/thread-safety/security) → **FAIL**,
   ≥3 MAJOR → FAIL. Chưa cài `ocr` → ghi `skip, ocr not installed`, **không** chặn PASS.

@@ -90,7 +90,7 @@ feature (<ADDITIVE|MODIFY|REMOVE>) | bug
 - Spec Validator verdict (phase close): PASS | FAIL | n/a
 
 ## Doc / Decision Impact
-- Doc impact result: <updated docs or `no doc impact`>
+- Doc impact result: <updated docs or `no doc impact`; worktree song song → doc delta (endpoint/shape/schema/flow + `file:line`), dispatcher reconcile khi merge layer>
 - Decision log: `.context/decisions.md#...` | none
 
 ## Commit / Tracking
@@ -106,7 +106,7 @@ feature (<ADDITIVE|MODIFY|REMOVE>) | bug
 - [ ] Reviewer độc lập PASS (`.opencode/agent/reviewer.md`)
 - [ ] `.context/progress.json` updated
 - [ ] Error Memory updated for every failed attempt, or `n/a` recorded
-- [ ] Doc Impact reconciled, or `no doc impact` recorded
+- [ ] Doc Impact reconciled (worktree song song: doc delta recorded here, dispatcher reconciles shared docs at layer merge), or `no doc impact` recorded
 - [ ] Decision log updated if `Decision impact: YES`
 - [ ] Commit created after PASS close-out (1 task = 1 commit, unless reason recorded; SHA tracked by git)
 

@@ -18,6 +18,8 @@
   - `feat(feature-<slug>): phase-<N>-task-<NN> <summary>`
   - `fix(bug-<slug>): phase-<N>-task-<NN> <summary>`
   - Workflow/template/config: `chore(workflow): <summary>` hoặc `docs(workflow): <summary>`
+  - Doc reconcile sau merge layer song song (dispatcher, 1 commit/layer, ngoài luật 1 task = 1 commit):
+    `docs(layer-<N>): reconcile as-built docs`
 - Commit body nên có trailer:
   ```
   Task: tasks/<feature-or-bug-slug>/phase-<N>-task-<NN>.md
@@ -27,6 +29,7 @@
   Migration: <none|migration-name SAFE_ADDITIVE|migration-name HIGH_RISK>
   Doc-Impact: <none|API_SPEC|ERD|DESIGN|GAPS>
   ```
+  (Commit của builder trong worktree song song: `Doc-Impact` = doc delta đã ghi ở task file, chưa sửa doc dùng chung.)
 - Với one-line obvious bug không tạo task file, commit body phải có:
   ```
   Repro-Verification: <short evidence of root cause + expected/actual>

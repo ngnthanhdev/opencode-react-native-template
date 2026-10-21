@@ -57,7 +57,13 @@ Quy tắc bắt buộc:
 - Task đụng TS/JS: đọc `skills/anti-slop/SKILL.md`; chạy `npx oxlint` (nếu repo có oxlint config) trước khi bàn giao.
   Không thêm `as any`/dictionary type "an toàn giả", không `filter().map()`/reduce copy accumulator.
 - Code mới/refactor: tuân `skills/ai-readable-codebase/SKILL.md` — tên self-descriptive, hàm ≤50 dòng,
-  ít indirection (≤3 bước nhảy), comment WHY; cập nhật `README.md`/`ARCHITECTURE.md` khi đổi luồng chính.
+  ít indirection (≤3 bước nhảy), comment WHY; cập nhật `README.md`/`ARCHITECTURE.md` khi đổi luồng chính
+  (chạy trong worktree song song → ghi vào Doc Impact note thay vì sửa, xem dòng dưới).
+- **Worktree song song → KHÔNG sửa doc dùng chung** (`docs/API_SPEC.md`, `docs/ERD.md`, `docs/DESIGN.md`,
+  `docs/generated/*`, gap register, `README.md`/`ARCHITECTURE.md` ở root, `.context/decisions.md`). Ghi doc delta
+  vào `## Doc / Decision Impact` của task file (đổi gì: endpoint/shape/schema/flow/decision + evidence `file:line`)
+  và vào completion report; dispatcher reconcile 1 lần khi merge layer. Doc mới do chính task tạo → sửa bình thường.
+  Đơn luồng (không worktree) → reconcile doc như cũ (`AGENTS.md` § Doc Impact & Reconcile Rules).
 - UI mới phức tạp (optional): mô tả screen/state rõ trong task + `skills/impeccable/SKILL.md` craft-floor trước khi code.
 - Trước khi sửa UI mobile: tuân thủ checklist RN — SafeAreaView (không đè notch/home indicator),
   touch target ≥44×44px, dynamic type/font scaling KHÔNG vỡ layout, dark mode qua `useColorScheme`,
