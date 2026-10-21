@@ -183,6 +183,7 @@ project-template/
 │   ├── generate-inventory.mjs         ← Deterministic inventory generator
 │   ├── detect-profile.mjs             ← Detect stack → suggest project-config (used by /brainstorm)
 │   ├── apply-verify-permissions.mjs   ← Sync verify-command allow rules into reviewer/spec-validator
+│   ├── spec-extract.mjs               ← Extract a task's `## Spec refs` sections → .context/task-context/ (builder/reviewer read this, not the full spec)
 │   └── template-sync.mjs              ← One-command sync of template-owned files into a project (see Getting Started → Syncing)
 │
 ├── .agent/

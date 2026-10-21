@@ -15,7 +15,7 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
 
 ## Parallel Execution Model (worktree-per-task)
 
-> Đọc trước khi chạy 1 layer. Khi layer chỉ có 1 task → bỏ qua fan-out, chạy trực tiếp như cũ.
+> Đọc trước khi chạy 1 layer. Khi layer chỉ có 1 task → bỏ qua fan-out, chạy trực tiếp như cũ (vẫn chạy bước spec-extract 2a2).
 > Trong 1 layer, các task độc lập chạy **SONG SONG** — mỗi task 1 **git worktree riêng**, mỗi builder agent chạy loop đầy đủ trong worktree của mình, rồi **dispatcher tự merge** bằng script.
 
 ```
@@ -49,8 +49,14 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
       → nếu khai `test_infra_port_base`, worktree nhận 1 port CỐ ĐỊNH (`infra.port` trong output,
         env `WORKTREE_PORT`/`WORKTREE_SLOT` cho hook). `require_infra: true` + hook fail → `setup`
         exit 1 → KHÔNG spawn builder cho task đó, sửa hạ tầng trước.
+   a2. mỗi task: node scripts/spec-extract.mjs --task <task file>   → { out, found, missing, words }
+      → trích các section spec theo `## Spec refs` của task ra `out` = `.context/task-context/<task-slug>.md`
+        ở REPO GỐC (gitignored, KHÔNG có trong worktree → truyền ĐƯỜNG DẪN TUYỆT ĐỐI cho builder/reviewer).
+        `missing` khác rỗng → builder/reviewer tự đọc đúng section đó trong spec đầy đủ.
+        Task chưa có `## Spec refs` → out = null, builder/reviewer đọc spec như cũ. Lỗi lệnh này KHÔNG chặn build.
    b. spawn SONG SONG 1 builder/task (sessions_spawn, context="isolated"):
-      "cd <worktree>; chạy FULL loop cho <task file>; chỉ touch file trong scope;
+      "cd <worktree>; chạy FULL loop cho <task file>; spec context: <out tuyệt đối> (đọc file này
+       thay vì cả SPECIFICATIONS.md/design-spec.md); chỉ touch file trong scope;
        chạy cả integration_test_command (nếu khai) trên port <infra.port>;
        commit trong worktree; KHÔNG ghi progress.json; báo PASS/BLOCKED về."
       ngay TRƯỚC khi spawn, đánh dấu agent đang sống (display-only):
@@ -62,7 +68,8 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
       • builder PASS → node tools/task-dashboard/agent-live.mjs leave --agent builder-<n>
         rồi node tools/task-dashboard/agent-live.mjs enter --agent reviewer-<n> \
           --role reviewer --task <layer-N/task-NN> --title "<task title>" --phase review
-        (gọi ngay trước khi spawn subagent reviewer; reviewer PASS → leave reviewer-<n>)
+        (gọi ngay trước khi spawn subagent reviewer — prompt reviewer cũng kèm spec context <out tuyệt đối>;
+         reviewer PASS → leave reviewer-<n>)
       • builder BLOCKED → leave builder-<n> (task quay về TODO)
 3. Hết wave → dispatcher TỰ chạy bước merge (phần dưới). KHÔNG spawn agent con nào.
 ```

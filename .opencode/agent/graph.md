@@ -19,7 +19,7 @@ Wrapper gọi `.agent/graph.md`. Chia công việc thành layer/task theo depend
 Đọc + thực thi `.agent/graph.md`:
 1. Đọc `SPECIFICATIONS.md` + design doc (`docs/specs/*-design.md`) + `docs/**` + stack trong `.context/project-config.md`.
 2. Chia **layer** theo dependency (Layer 0 hạ tầng → backend → frontend → integration → advanced → polish).
-3. Sinh `tasks/<slug>/layer-{N}-task-{NN}.md` theo format.
+3. Sinh `tasks/<slug>/layer-{N}-task-{NN}.md` theo format — điền **`## Spec refs`** (ID/heading spec mà task cần) để builder/reviewer chỉ nhận đoạn spec trích bởi `scripts/spec-extract.mjs`, không đọc cả spec.
 4. (best-effort) Vẽ layer-plan diagram (`skills/archify`) → `docs/diagrams/layer-plan.html`. Nếu archify chưa cài / bị chặn `external_directory` / lỗi → **ghi blocker rồi bỏ qua**, KHÔNG fail bước graph (task file vẫn phải sinh).
 5. Update `.context/progress.json` (totalLayers/currentLayer/completedTasks/inProgressTask).
 6. **DỪNG chờ user duyệt plan** (human checkpoint) trước khi loop chạy layer 0.

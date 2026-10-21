@@ -47,7 +47,7 @@ Change Request Agent:
 Spec Validator check lại (feature) · Root-cause first (bug)
     │
     ▼
-Phase/Task → Human duyệt plan
+Phase/Task (điền `## Spec refs` mỗi task — xem `tasks/README.md`) → Human duyệt plan
     │
     ▼
 Loop SONG SONG theo phase (giống initial build — xem `.agent/loop.md` Parallel Execution Model):
