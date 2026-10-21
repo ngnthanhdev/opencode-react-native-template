@@ -48,6 +48,15 @@ Quản lý shared state cho toàn bộ hệ thống agents. File `.context/progr
       "reason": "Stateless, better for scaling"
     }
   ],
+  "pendingSpecPatch": [
+    {
+      "id": "sp-3bbfec8",
+      "decision": "portrait framing nullable trên POST /v1/portraits",
+      "specRef": "F04",
+      "source": "layer-2/task-03",
+      "decidedAt": "ISO timestamp"
+    }
+  ],
   "lastUpdated": "ISO timestamp"
 }
 ```
@@ -79,6 +88,42 @@ Quản lý shared state cho toàn bộ hệ thống agents. File `.context/progr
 >
 > Helper tự tìm repo root qua `git rev-parse --git-common-dir` → chạy trong worktree vẫn ghi đúng
 > `.context/progress.json` của repo gốc. `complete` tự xoá task khỏi `inProgressTask`/`blockedTasks`.
+
+### `pendingSpecPatch` — quyết định của owner chờ áp vào spec
+
+Hàng đợi các câu trả lời/quyết định của owner **làm rõ hoặc đổi intent** nhưng chưa vào `SPECIFICATIONS.md`
+(vd "portrait framing nullable trên POST /v1/portraits", "report note ≤ 500 ký tự (F10 AC6)").
+Mục tiêu: spec không trôi khỏi thực tế — agent sau đọc spec là thấy quyết định mới.
+
+**Mảng OBJECT** (chuẩn):
+
+```json
+{ "id": "sp-3bbfec8", "decision": "...", "specRef": "F10", "source": "layer-2/task-03",
+  "decidedAt": "ISO", "note": "..." }
+```
+
+- `id` — helper sinh (`sp-<7 hex sha1 của decision>`), ổn định, dùng để clear. `decision` — **bắt buộc**, ghi đúng ý owner.
+- `specRef` — requirement/feature/AC bị ảnh hưởng (`F10`, `R-05`, `F10 AC6`) — optional nhưng nên có.
+- `source` — task hoặc câu hỏi sinh ra quyết định. `decidedAt` — helper tự ghi.
+- `note` — chỉ có khi spec-publisher **không map được** vào section nào (entry ở lại hàng đợi kèm lý do).
+- **Vẫn chấp nhận string cũ** (`"report note ≤ 500 chars (F10 AC6)"`) — helper tự chuẩn hoá thành `{id, decision}`.
+
+**Ai ghi:** **controller** (session chính / dispatcher) — **ngay lúc** owner chốt một quyết định làm rõ/đổi intent
+(trả lời câu hỏi làm rõ, duyệt checkpoint kèm điều chỉnh…). Subagent **không** ghi `progress.json`: subagent
+gặp điểm cần owner quyết → báo về controller; controller hỏi owner rồi ghi.
+
+```bash
+node tools/task-dashboard/progress-write.mjs spec-patch add --decision "report note ≤ 500 ký tự" \
+     --ref "F10 AC6" --source layer-2/task-03
+node tools/task-dashboard/progress-write.mjs spec-patch list                 # chỉ đọc: count, applyNow, entries
+node tools/task-dashboard/progress-write.mjs spec-patch note --id sp-3bbfec8 --note "chưa có section"
+node tools/task-dashboard/progress-write.mjs spec-patch clear --ids sp-3bbfec8,sp-6fb2816   # hoặc --all
+```
+
+- `add` dedupe theo nội dung decision (bỏ qua hoa/thường + khoảng trắng); trùng → không thêm, chỉ bổ sung
+  `specRef`/`source` còn thiếu. Output có `count` + `applyNow` (`true` khi ≥ 10 entry).
+- **Ai áp + khi nào áp:** `spec-publisher` theo `.agent/spec-publish.md` §0 — mỗi lần đóng layer (initial build),
+  cuối mỗi change-request, và ngay khi `applyNow: true`. Controller clear các id spec-publisher báo đã áp.
 
 ---
 
@@ -119,6 +164,8 @@ Khi agent bắt đầu session mới:
 | Task BLOCKED | Move to `blockedTasks` with reason |
 | Layer complete | `currentLayer++` |
 | Decision made | Append to `decisions[]` |
+| Owner chốt quyết định làm rõ/đổi intent | `spec-patch add` → `pendingSpecPatch[]` |
+| spec-publisher đã áp entry vào spec | `spec-patch clear --ids <id,...>` |
 
 ---
 

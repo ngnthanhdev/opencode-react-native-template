@@ -120,6 +120,17 @@ node tools/task-dashboard/progress-write.mjs set-layer --current 2 --total 5
 Helper atomic (tmp+rename) + lock, dedupe theo task, tự xoá task khỏi `inProgressTask`/`blockedTasks`
 khi `complete`, không crash khi file chưa có, và tự tìm repo gốc nên chạy được từ trong worktree.
 
+`pendingSpecPatch` (quyết định của owner chờ áp vào spec — schema + lịch áp: `.agent/blackboard.md`,
+`.agent/spec-publish.md` §0):
+
+```bash
+node tools/task-dashboard/progress-write.mjs spec-patch add --decision "report note ≤ 500 ký tự" \
+     --ref "F10 AC6" --source layer-2/task-03      # dedupe theo nội dung; output count + applyNow (≥ 10)
+node tools/task-dashboard/progress-write.mjs spec-patch list                 # chỉ đọc
+node tools/task-dashboard/progress-write.mjs spec-patch note --id sp-3bbfec8 --note "chưa có section"
+node tools/task-dashboard/progress-write.mjs spec-patch clear --ids sp-3bbfec8,sp-6fb2816   # hoặc --all
+```
+
 ## Ghi `agents-live.json` — `agent-live.mjs`
 
 File `.context/agents-live.json` là **file phụ trợ CHỈ-HIỂN-THỊ**. Không phải source of truth
@@ -229,7 +240,7 @@ Schema:
 tools/task-dashboard/
 ├── server.mjs            # HTTP server + đọc agents-live/progress + git worktree
 ├── agent-live.mjs        # ghi .context/agents-live.json (enter/leave/clear)
-├── progress-write.mjs    # ghi .context/progress.json (complete/block/in-progress/set-layer)
+├── progress-write.mjs    # ghi .context/progress.json (complete/block/in-progress/set-layer/spec-patch)
 ├── index.html            # toàn bộ UI, inline CSS/JS, SVG isometric
 ├── sample-progress.json  # mẫu progress.json đúng schema
 └── README.md

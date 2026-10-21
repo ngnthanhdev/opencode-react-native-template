@@ -8,10 +8,17 @@
  *   node tools/task-dashboard/progress-write.mjs in-progress --task layer-1/task-04
  *   node tools/task-dashboard/progress-write.mjs clear-in-progress
  *   node tools/task-dashboard/progress-write.mjs set-layer --current 2 --total 5
+ *   node tools/task-dashboard/progress-write.mjs spec-patch add --decision "..." [--ref F10] [--source "<task|question>"]
+ *   node tools/task-dashboard/progress-write.mjs spec-patch note --id sp-3 --note "..."
+ *   node tools/task-dashboard/progress-write.mjs spec-patch clear --ids sp-1,sp-2 | --all
+ *   node tools/task-dashboard/progress-write.mjs spec-patch list        (chỉ đọc)
  *
  * Mục đích: agent gọi helper thay vì tự viết JSON tay (nguồn gây lỗi schema).
  *  - completedTasks là mảng OBJECT: { task, review?, round?, report?, completedAt? }
  *    (vẫn đọc được string cũ để backward-compat).
+ *  - pendingSpecPatch là mảng OBJECT: { id, decision, specRef?, source?, decidedAt?, note? }
+ *    (string cũ → { id, decision }; id = `sp-<7 hex sha1 của decision>` → ổn định, không tái dùng
+ *    sau clear; dedupe theo nội dung decision).
  *  - Atomic write (tmp + rename) + lock thư mục → chịu được nhiều process.
  *  - Không crash khi file chưa có.
  *  - Tự tìm repo root qua `git rev-parse --git-common-dir` (đúng cả trong worktree).
@@ -20,6 +27,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 // ── args ────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
@@ -191,6 +199,48 @@ function normalizeBlocked(list) {
   return out;
 }
 
+/** Đủ số entry này → controller gọi spec-publisher áp pendingSpecPatch ngay. */
+const SPEC_PATCH_THRESHOLD = 10;
+
+function decisionKey(s) { return String(s).trim().replace(/\s+/g, ' ').toLowerCase(); }
+
+/** id theo nội dung → cùng decision luôn ra cùng id (kể cả entry string cũ chưa có id). */
+function specPatchId(decision, used) {
+  const hex = createHash('sha1').update(decisionKey(decision)).digest('hex');
+  let id = `sp-${hex.slice(0, 7)}`;
+  for (let n = 2; used.has(id); n++) id = `sp-${hex.slice(0, 7)}-${n}`;
+  return id;
+}
+
+/** pendingSpecPatch → mảng object có `id` duy nhất; string cũ → {id, decision}. Không bỏ entry. */
+function normalizeSpecPatch(list) {
+  const items = Array.isArray(list) ? list : [];
+  const out = [];
+  const used = new Set();
+  for (const x of items) {
+    let e;
+    if (typeof x === 'string') {
+      if (!x.trim()) continue;
+      e = { decision: x.trim() };
+    } else if (x && typeof x === 'object' && !Array.isArray(x)) {
+      e = { ...x };
+    } else {
+      warn(`pendingSpecPatch: bỏ phần tử không đọc được (${JSON.stringify(x)})`);
+      continue;
+    }
+    let id = typeof e.id === 'string' ? e.id.trim() : '';
+    if (!id || used.has(id)) id = specPatchId(typeof e.decision === 'string' ? e.decision : JSON.stringify(e), used);
+    used.add(id);
+    const { id: _old, ...rest } = e;
+    out.push({ id, ...rest });
+  }
+  return out;
+}
+
+function splitIds(v) {
+  return (typeof v === 'string' ? v : '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
 // ── commands ────────────────────────────────────────────────────────────────
 function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -204,6 +254,10 @@ function main() {
   node progress-write.mjs in-progress --task <id>
   node progress-write.mjs clear-in-progress
   node progress-write.mjs set-layer --current <n> --total <m>
+  node progress-write.mjs spec-patch add --decision <str> [--ref <specRef>] [--source <task|question>]
+  node progress-write.mjs spec-patch note --id <id> --note <str>
+  node progress-write.mjs spec-patch clear --ids <id,id,...> | --all
+  node progress-write.mjs spec-patch list            (chỉ đọc, không ghi)
 
   [--repo <path>]  mặc định tự tìm repo root (git-common-dir → đúng cả trong worktree)
 `);
@@ -213,6 +267,19 @@ function main() {
   const repo = findRepo(args.repo);
   const file = path.join(repo, '.context', 'progress.json');
   const task = taskIdOf(args.task);
+  const sub = args._[1];
+
+  if (cmd === 'spec-patch' && sub === 'list') {
+    const p = readProgress(file);
+    if (p === null) { warn('progress.json hỏng — sửa tay trước'); return 2; }
+    const entries = normalizeSpecPatch(p.pendingSpecPatch);
+    console.log(JSON.stringify({
+      ok: true, action: 'spec-patch list', count: entries.length,
+      threshold: SPEC_PATCH_THRESHOLD, applyNow: entries.length >= SPEC_PATCH_THRESHOLD,
+      entries, file, repo,
+    }, null, 2));
+    return 0;
+  }
 
   const mutators = {
     complete(p) {
@@ -262,11 +329,65 @@ function main() {
       p.totalLayers = total;
       return { ok: true, action: 'set-layer', currentLayer: cur, totalLayers: total };
     },
+    'spec-patch'(p) {
+      p.pendingSpecPatch = normalizeSpecPatch(p.pendingSpecPatch);
+      const list = p.pendingSpecPatch;
+      if (sub === 'add') {
+        if (typeof args.decision !== 'string' || !args.decision.trim()) {
+          return { code: 1, msg: 'spec-patch add cần --decision "<quyết định của owner>"' };
+        }
+        const decision = args.decision.trim();
+        const fields = {};
+        if (typeof args.ref === 'string' && args.ref.trim()) fields.specRef = args.ref.trim();
+        if (typeof args.source === 'string' && args.source.trim()) fields.source = args.source.trim();
+        const key = decisionKey(decision);
+        let entry = list.find((e) => typeof e.decision === 'string' && decisionKey(e.decision) === key);
+        const duplicate = Boolean(entry);
+        if (entry) {
+          // trùng nội dung → không thêm mới, chỉ bổ sung field còn thiếu
+          for (const [k, v] of Object.entries(fields)) if (!entry[k]) entry[k] = v;
+        } else {
+          const id = specPatchId(decision, new Set(list.map((e) => e.id)));
+          entry = { id, decision, ...fields, decidedAt: new Date().toISOString() };
+          list.push(entry);
+        }
+        const applyNow = list.length >= SPEC_PATCH_THRESHOLD;
+        if (applyNow) warn(`pendingSpecPatch đã ${list.length} entry (≥ ${SPEC_PATCH_THRESHOLD}) → gọi spec-publisher áp ngay`);
+        return { ok: true, action: 'spec-patch add', duplicate, entry, count: list.length, applyNow };
+      }
+      if (sub === 'note') {
+        const id = typeof args.id === 'string' ? args.id.trim() : '';
+        if (!id || typeof args.note !== 'string' || !args.note.trim()) {
+          return { code: 1, msg: 'spec-patch note cần --id <id> --note "<lý do chưa áp được>"' };
+        }
+        const entry = list.find((e) => e.id === id);
+        if (!entry) return { code: 1, msg: `spec-patch note: không có id ${id}` };
+        entry.note = args.note.trim();
+        return { ok: true, action: 'spec-patch note', entry, count: list.length };
+      }
+      if (sub === 'clear') {
+        if (args.all === true) {
+          const cleared = list.map((e) => e.id);
+          p.pendingSpecPatch = [];
+          return { ok: true, action: 'spec-patch clear', cleared, notFound: [], count: 0 };
+        }
+        const ids = splitIds(args.ids);
+        if (!ids.length) return { code: 1, msg: 'spec-patch clear cần --ids <id,id,...> hoặc --all' };
+        const known = new Set(list.map((e) => e.id));
+        const notFound = ids.filter((id) => !known.has(id));
+        if (notFound.length) warn(`spec-patch clear: không có id ${notFound.join(', ')}`);
+        const drop = new Set(ids);
+        const cleared = list.filter((e) => drop.has(e.id)).map((e) => e.id);
+        p.pendingSpecPatch = list.filter((e) => !drop.has(e.id));
+        return { ok: true, action: 'spec-patch clear', cleared, notFound, count: p.pendingSpecPatch.length };
+      }
+      return { code: 1, msg: `spec-patch cần lệnh con add|note|clear|list (nhận: ${sub ?? 'trống'})` };
+    },
   };
 
   const fn = mutators[cmd];
   if (!fn) {
-    warn(`lệnh lạ: ${cmd} (chỉ complete|block|in-progress|clear-in-progress|set-layer)`);
+    warn(`lệnh lạ: ${cmd} (chỉ complete|block|in-progress|clear-in-progress|set-layer|spec-patch)`);
     return 1;
   }
 
@@ -280,6 +401,7 @@ function main() {
       // giữ mảng chuẩn hoá kể cả khi lệnh không đụng tới
       if (p.completedTasks) p.completedTasks = normalizeCompleted(p.completedTasks);
       if (p.blockedTasks) p.blockedTasks = normalizeBlocked(p.blockedTasks);
+      if (p.pendingSpecPatch) p.pendingSpecPatch = normalizeSpecPatch(p.pendingSpecPatch);
       writeProgress(file, p);
       return r;
     });

@@ -62,7 +62,7 @@ Loop SONG SONG theo phase (giống initial build — xem `.agent/loop.md` Parall
         node tools/task-dashboard/agent-live.mjs leave --agent reviewer-<n>
   dispatcher tự merge: merge --scope ... --phase <N> → verify tổng thể → ghi progress.json 1 lần (progress-write.mjs) → cleanup
     ↓
-Doc Impact/Reconcile → Progress → commit-first
+Doc Impact/Reconcile → ★ Spec Publisher áp `pendingSpecPatch` còn lại (`.agent/spec-publish.md` §0, bỏ qua nếu rỗng) → Progress → commit-first
     │
     ▼
 Đóng change file: status=done → spec/changes/archive/

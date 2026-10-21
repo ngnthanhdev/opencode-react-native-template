@@ -95,18 +95,24 @@ Execute từng task theo ReAct cycle: Read → Plan → Act → Observe → Repe
    theo bảng ở AGENTS.md § Doc Impact & Reconcile Rules → regen `docs/generated/*` nếu có cấu hình
    → 1 commit `docs(layer-<N>): reconcile as-built docs`. Mọi task `no doc impact` → bỏ qua bước này.
    KHÔNG sửa intent docs cho khớp code (code ≠ intent → ghi gap register).
-3. Update `.context/progress.json` 1 LẦN — DÙNG HELPER, đừng tự viết JSON tay:
+3. Áp quyết định owner vào spec: node tools/task-dashboard/progress-write.mjs spec-patch list
+   → `count > 0` → spec-publisher patch-only (`.agent/spec-publish.md` §0, `trigger: spec-patch`; layer cuối → bản
+     `initial-build` đầy đủ ở mục Spec Publish bên dưới) → dispatcher `spec-patch clear --ids <Applied>` /
+     `spec-patch note --id <id> --note "..."` cho entry Unmapped → commit spec cùng close-out layer.
+   → `count = 0` → bỏ qua.
+4. spec-validator review layer (AGENTS.md bước 5g) — check theo spec ĐÃ vá ở bước 3. FAIL → về loop sửa gap, KHÔNG merge về nhánh chính.
+5. Update `.context/progress.json` 1 LẦN — DÙNG HELPER, đừng tự viết JSON tay:
      node tools/task-dashboard/progress-write.mjs complete --task <layer-N/task-NN> \
           --review "STRICT PASS" --round <R> [--report <review-report path>]
      node tools/task-dashboard/progress-write.mjs block --task <id> --reason "..."
      node tools/task-dashboard/progress-write.mjs set-layer --current <N+1> --total <M>
    Helper ghi atomic + dedupe theo task + tự xoá task khỏi inProgressTask/blockedTasks.
    (Schema `completedTasks` = mảng object `{task, review?, round?, report?, completedAt?}`.)
-4. Merge integration branch về nhánh chính (theo DevOps/git policy).
-5. node scripts/parallel-dispatch.mjs cleanup --layer N
+6. Merge integration branch về nhánh chính (theo DevOps/git policy).
+7. node scripts/parallel-dispatch.mjs cleanup --layer N
    → nếu khai `worktree_teardown_cmd`, script chạy hook đó TRƯỚC khi xoá (drop DB tạm / dọn .env.local riêng)
    → node tools/task-dashboard/agent-live.mjs clear   (reset agents-live.json về rỗng)
-6. → context-manager compact → HUMAN CHECKPOINT → layer N+1.
+8. → context-manager compact → HUMAN CHECKPOINT → layer N+1.
 ```
 
 > 📺 **`agents-live.json` là file DISPLAY, không phải state.** `progress.json` vẫn là source of truth.
@@ -144,6 +150,7 @@ Lặp tới khi hết task:
    • verify TỔNG THỂ trên build-integration (như Merge steps bước 2).
    • doc reconcile 1 lần (như Merge steps bước 2b) cho mọi task đã merge kể từ milestone trước
      → commit `docs(milestone-layer-<N>): reconcile as-built docs`.
+   • áp `pendingSpecPatch` (như Merge steps bước 3) trước, để spec-validator check theo spec đã vá.
    • spawn `spec-validator` cho layer đó **song song** với các task đang chạy/ready của layer sau —
      KHÔNG chặn dispatch. FAIL → NGỪNG dispatch task mới (task đang chạy vẫn chạy xong), báo human danh sách
      gap + task sửa đề xuất (dependency vào task liên quan); human duyệt → đưa task sửa vào vòng lặp rồi chạy tiếp.
@@ -280,6 +287,7 @@ Sau khi **layer/phase hoàn thành** (mọi task PASS) → **MANDATORY** invoke 
 Sau khi **layer CUỐI hoàn thành — initial build xong** (mọi task của mọi layer PASS):
 ```
 - INVOKE `.agent/spec-publish.md` (spec-publisher):
+  - §0: áp hết `pendingSpecPatch` còn lại (dispatcher clear id đã áp qua helper).
   - Cập nhật `spec/test-scope/current.json` theo phạm vi THẬT đã build:
     `trigger: initial-build`, `scopeVersion` +1 (spec-init đã tạo bản nháp lúc khởi đầu),
     `risk` hạ theo kết quả verify thật, `specRefs` = req đã implement.
@@ -288,6 +296,10 @@ Sau khi **layer CUỐI hoàn thành — initial build xong** (mọi task của m
 ```
 
 > 📋 **State (`.agent/blackboard.md`)**: `.context/progress.json` là source of truth — đọc trước khi làm (resume), atomic update sau mỗi bước đổi trạng thái.
+
+> 📝 **Quyết định của owner giữa chừng** (trả lời câu hỏi làm rõ, chỉnh khi duyệt checkpoint) mà làm rõ/đổi intent →
+> dispatcher ghi NGAY: `progress-write.mjs spec-patch add --decision "..." [--ref F10] [--source <task|question>]`.
+> Output `applyNow: true` (≥ 10 entry) → chạy spec-publisher patch-only ở checkpoint kế tiếp, không đợi hết layer.
 
 ## Verification Commands (React Native)
 
