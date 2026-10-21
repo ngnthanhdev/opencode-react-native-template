@@ -184,6 +184,7 @@ project-template/
 │   ├── detect-profile.mjs             ← Detect stack → suggest project-config (used by /brainstorm)
 │   ├── apply-verify-permissions.mjs   ← Sync verify-command allow rules into reviewer/spec-validator
 │   ├── spec-extract.mjs               ← Extract a task's `## Spec refs` sections → .context/task-context/ (builder/reviewer read this, not the full spec)
+│   ├── review-snapshot.mjs            ← Snapshot working tree → tree SHA so review round ≥ 2 diffs only the fix
 │   └── template-sync.mjs              ← One-command sync of template-owned files into a project (see Getting Started → Syncing)
 │
 ├── .agent/

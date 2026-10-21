@@ -146,7 +146,7 @@ không chép lại checklist ở trên, không giải thích item OK, không dá
 
 ```markdown
 Agent: reviewer · layer-0/task-01 · round 1 · level NORMAL · Verdict FAIL
-Ref: 3f2c1ab · tree dirty · Files: src/screens/Feed.tsx(+48/-6), src/screens/Feed.test.tsx(+30)
+Ref: tree 9b1e04c (HEAD 3f2c1ab)
 Reason: 1 màn mới, không đụng shared/API/auth
 Blast radius: chỉ màn Feed
 
@@ -168,8 +168,8 @@ aislop 88 OK · oxlint skip(no config) · ocr skip(not installed) · ai-readable
 
 **PASS** → git commit → next task
 **FAIL** → return to Loop kèm path report; builder trả `finding → fix` (max 2 rounds, then escalate).
-Round ≥ 2 = **delta review**: chỉ soi diff của fix + bảng re-check finding cũ
-(`.opencode/agent/reviewer.md` § Round ≥ 2).
+Round ≥ 2 = **delta review**: snapshot mới bằng `node scripts/review-snapshot.mjs`, chỉ soi `git diff <tree R-1> <tree R>`
++ bảng re-check finding cũ (`.opencode/agent/reviewer.md` § Round ≥ 2).
 
 ### 5b. Layer Review (SPEC_VALIDATOR_MODEL)
 Sau khi ALL tasks trong layer PASS:

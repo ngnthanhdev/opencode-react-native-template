@@ -253,7 +253,8 @@ Write the test first. Watch it fail. Write minimal code to pass.
      Builder chỉ sửa các Findings trong report (không mở rộng scope), chạy lại verify, rồi trả danh sách
      `#<n> [SEV] file:line → fix (file:line mới)` — mỗi finding 1 dòng; không sửa → `#<n> → not fixed: <lý do>`.
    - **Round R+1:** gọi reviewer kèm path report round R + danh sách `finding → fix` → reviewer chạy **delta review**
-     (`.opencode/agent/reviewer.md` § Round ≥ 2), không review lại cả task.
+     (`.opencode/agent/reviewer.md` § Round ≥ 2): `git diff <tree R> <tree R+1>` giữa 2 snapshot
+     `node scripts/review-snapshot.mjs` — không cần builder commit/stash, không review lại cả task.
 
 ## Context Compact Check (`.agent/context-manager.md`)
 

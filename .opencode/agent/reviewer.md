@@ -46,7 +46,7 @@ permission:
     "git log*": allow
     "git show*": allow
     "git branch*": allow
-    "git rev-parse*": allow
+    "node scripts/review-snapshot.mjs*": allow
     "git push*": deny
     "git commit*": deny
     "git reset --hard*": deny
@@ -157,7 +157,7 @@ không dán log dài** (FAIL → chỉ dán dòng lỗi đầu tiên). Skeleton 
 
 ```markdown
 Agent: reviewer · <task id> · round <R> · level <FAST|NORMAL|STRICT> · Verdict PASS|FAIL
-Ref: <git rev-parse HEAD> · tree clean|dirty · Files: <path>(+a/-d), …
+Ref: tree <sha> (HEAD <sha>)
 Reason: <1 dòng — vì sao chọn level>
 Blast radius: <1 dòng — file/module/API/client/data có thể bị ảnh hưởng>
 Repro: PASS|FAIL|BLOCKED — <evidence 1 dòng>        (chỉ bug task)
@@ -179,8 +179,9 @@ aislop 86 OK · oxlint skip(no config) · ocr skip(not installed) · ai-readable
 ```
 
 - **Header** mở đầu bằng `Agent: reviewer` (attribution bắt buộc) — ghi vào report file + console.
-- **Ref** (để round sau tính delta): `git rev-parse HEAD` + `git status --short` (clean/dirty) + file trong scope
-  từ `git diff <base> --stat`, gọn 1 dòng.
+- **Ref** (để round sau tính delta chính xác): chạy `node scripts/review-snapshot.mjs` **trước khi review/verify** (tránh lẫn file do verify sinh ra) → JSON
+  `{ tree, head }` = snapshot working tree (tracked + untracked, tôn trọng .gitignore; không commit/stash, không đụng
+  index/HEAD). Scope round 1 = `git diff <head> <tree> -- . ':(exclude).context'` (gồm cả file untracked; bỏ report/journal/state trong `.context/`).
 - **Verify**: mỗi command 1 dòng `command | result`, không dán output; chưa cấu hình → `skip, no app configured`.
 - **Gates**: 1 dòng (hoặc bảng nhỏ), mỗi gate `OK | FAIL | N/A | skip(<lý do>)` — aislop kèm score, mobile-UI kèm số mục
   đã kiểm (không đụng UI → `N/A`); không bỏ trống gate nào. Gate **FAIL** → chi tiết ghi thành finding
@@ -192,20 +193,19 @@ aislop 86 OK · oxlint skip(no config) · ocr skip(not installed) · ai-readable
 ### Round ≥ 2 — delta review
 
 Round 2+ **không review lại cả task từ đầu**:
-1. Đọc report round trước (path do primary truyền) → lấy `Ref`, `Files`, Findings; đọc danh sách `finding → fix` của builder.
-2. Delta = `git diff <Ref round trước>` (so với working tree — gồm cả fix đã commit lẫn chưa commit).
-   Round trước `tree dirty` (builder chỉ commit sau PASS) → diff này còn chứa code đã review: chỉ soi hunk ở file/dòng
-   builder khai trong `finding → fix` + file mới hoặc đổi `+a/-d` so với `Files` round trước; hunk không đổi → không review lại.
+1. Đọc report round trước (path do primary truyền) → lấy `Ref` tree, Findings; đọc danh sách `finding → fix` của builder.
+2. Chạy `node scripts/review-snapshot.mjs` lấy tree mới → delta **chính xác** của fix = `git diff <tree R-1> <tree R> -- . ':(exclude).context'`
+   (so nội dung, không phụ thuộc builder đã commit hay chưa). Chỉ review delta này.
 3. Re-check **từng** finding cũ: fixed? + evidence (file:line / test).
 4. Chạy lại **toàn bộ** verify commands; gate chỉ chạy lại trên delta (`aislop scan --changes`, oxlint, ocr file delta,
    mobile-UI mục liên quan delta).
-5. **Chỉ mở rộng scope** khi fix đụng file ngoài `Files` round trước hoặc đổi shared contract
+5. **Chỉ mở rộng scope** khi fix đụng file ngoài diff round trước (`git diff --name-only <head> <tree R-1>`) hoặc đổi shared contract
    (export/type/API/DTO/schema/navigation/shared hook/cache key) → review đủ phần đó, cân nhắc nâng level, ghi lý do ở `Scope`.
 
 ```markdown
 Agent: reviewer · <task id> · round <R> · level <FAST|NORMAL|STRICT> · Verdict PASS|FAIL
-Ref: <git rev-parse HEAD> · tree clean|dirty · Files: <path>(+a/-d), …
-Prev: <report round R-1> · Delta: `git diff <Ref R-1>` — <N> file · Scope: delta | widened(<lý do>)
+Ref: tree <sha> (HEAD <sha>)
+Prev: <report round R-1> · Delta: `git diff <tree R-1> <tree R>` — <N> file · Scope: delta | widened(<lý do>)
 Reason: <1 dòng, hoặc "như round R-1">
 Blast radius: <1 dòng, hoặc "như round R-1">
 Repro: PASS|FAIL|BLOCKED — <evidence 1 dòng>        (chỉ bug task)
