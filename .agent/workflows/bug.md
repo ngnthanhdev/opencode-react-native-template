@@ -36,7 +36,7 @@ Triage → Reproduce → Root cause → Task → Builder → Reviewer PASS
 
 ### 2.5 Builder → Reviewer
 - Gọi subagent `builder` (hoặc `builder-strong` — xem `.agent/workflows/state-commit.md` §7) implement + test.
-- Gọi subagent `reviewer` kiểm tra **độc lập** (không sửa source; chỉ ghi report scoped). FAIL → trả lại builder, **không** đóng bug.
+- Gọi subagent `reviewer` kiểm tra **độc lập** (không sửa source; chỉ ghi report scoped). FAIL → trả lại builder (kèm path report), **không** đóng bug; vòng sau reviewer chỉ delta review (`.agent/loop.md` mục 6).
 - Regression: **phải có test tái hiện bug fail trước fix**, pass sau fix (test-first).
 - **Chỉ khi reviewer PASS** mới đi tiếp bước 2.7–2.9. FAIL → không update progress là "done", không commit/push.
 

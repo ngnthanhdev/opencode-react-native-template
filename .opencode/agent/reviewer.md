@@ -46,6 +46,7 @@ permission:
     "git log*": allow
     "git show*": allow
     "git branch*": allow
+    "git rev-parse*": allow
     "git push*": deny
     "git commit*": deny
     "git reset --hard*": deny
@@ -121,7 +122,8 @@ diff/phase đang review có đụng UI (screen/component/navigation/theme). Khô
 Vấn đề có sẵn ngoài diff → ghi `ngoài scope, đề xuất task riêng`, không tính FAIL cho phase này.
 
 Không có responsive breakpoints 375/768/1280 (web-only) — RN chạy trên device thật, kiểm theo checklist dưới đây
-(áp dụng cho **thay đổi UI trong diff**) và **ghi kết quả từng mục (OK / FAIL / N/A) + bằng chứng** vào report:
+(áp dụng cho **thay đổi UI trong diff**) và ghi kết quả vào report theo format gọn (§ Trả về report: `mobile-UI OK(<số mục>)`;
+chỉ mục **FAIL** mới ghi chi tiết + bằng chứng):
 
 - **SafeArea / notch:** dùng SafeAreaView / `react-native-safe-area-context` — không đè notch/home indicator, status bar.
 - **Touch target:** control tương tác ≥ **44×44px** (Apple HIG / Material); nút nhỏ → tăng padding/hitSlop.
@@ -148,17 +150,89 @@ Tool Loop Guard:
   - `Glob` trả empty hoặc > 50 kết quả → ghi `Residual risk` và **DỪNG**; không đổi pattern rồi lặp lại.
   - Vượt cap tool đọc → ghi `Residual risk` thay vì chạy tiếp.
 
-Trả về report:
-- **Mở đầu bằng `Agent: reviewer`** (attribution bắt buộc) — ghi vào report file + console.
-- Review level: `FAST` / `NORMAL` / `STRICT`
-- Reason: vì sao chọn level đó
-- Blast radius: file/module/API/client/data nào có thể bị ảnh hưởng
-- Verify commands + result: lệnh đã chạy hoặc `skip, no app configured`
-- Responsive Checklist Gate: (bắt buộc khi diff đụng UI) kết quả từng mục (OK / FAIL / N/A) + bằng chứng; không bỏ trống
-- Skill gates: kết quả `aislop` / `oxlint` (anti-slop) / `ocr` (open-code-review) / AI-readable / blitzstrike — mỗi gate `OK | FAIL | N/A | skip <lý do>` + bằng chứng; không bỏ trống (ai-friendly-web = `N/A`, web-only)
-- Findings: issues phân loại **[CRITICAL] / [MAJOR] / [MINOR]**, mỗi issue: file:line + cách fix đề xuất
-- Verdict: ✅ PASS / ❌ FAIL
-- PASS chỉ khi không còn CRITICAL/MAJOR **và**, với bug task, original repro status là `PASS` có evidence kiểm chứng được.
+## Trả về report — format gọn, mục tiêu ≤ 500 từ
+
+Report là **kết luận + bằng chứng**, không phải biên bản: **không chép lại checklist, không giải thích item OK,
+không dán log dài** (FAIL → chỉ dán dòng lỗi đầu tiên). Skeleton cố định cho round 1:
+
+```markdown
+Agent: reviewer · <task id> · round <R> · level <FAST|NORMAL|STRICT> · Verdict PASS|FAIL
+Ref: <git rev-parse HEAD> · tree clean|dirty · Files: <path>(+a/-d), …
+Reason: <1 dòng — vì sao chọn level>
+Blast radius: <1 dòng — file/module/API/client/data có thể bị ảnh hưởng>
+Repro: PASS|FAIL|BLOCKED — <evidence 1 dòng>        (chỉ bug task)
+
+## Verify
+| Command | Result |
+|---|---|
+| `<verify command>` | PASS |
+| `<verify command>` | FAIL — `<dòng lỗi đầu tiên>` |
+
+## Gates
+aislop 86 OK · oxlint skip(no config) · ocr skip(not installed) · ai-readable OK · mobile-UI OK(7) · blitzstrike N/A · ai-friendly-web N/A
+
+## Findings
+- [MAJOR] src/a.ts:42 — <vấn đề> → <cách fix>
+
+## Residual risk
+- <phần chưa xác minh được>                          (optional)
+```
+
+- **Header** mở đầu bằng `Agent: reviewer` (attribution bắt buộc) — ghi vào report file + console.
+- **Ref** (để round sau tính delta): `git rev-parse HEAD` + `git status --short` (clean/dirty) + file trong scope
+  từ `git diff <base> --stat`, gọn 1 dòng.
+- **Verify**: mỗi command 1 dòng `command | result`, không dán output; chưa cấu hình → `skip, no app configured`.
+- **Gates**: 1 dòng (hoặc bảng nhỏ), mỗi gate `OK | FAIL | N/A | skip(<lý do>)` — aislop kèm score, mobile-UI kèm số mục
+  đã kiểm (không đụng UI → `N/A`); không bỏ trống gate nào. Gate **FAIL** → chi tiết ghi thành finding
+  (mobile-UI: chỉ mục FAIL + bằng chứng); mục chưa xác minh được trên device → Residual risk.
+- **Findings**: chỉ issue thật, mỗi issue 1 dòng (tối đa 2) `[CRITICAL|MAJOR|MINOR] file:line — vấn đề → fix`;
+  không có → `none`. Vấn đề có sẵn ngoài diff → `ngoài scope, đề xuất task riêng`.
+- **Verdict**: PASS chỉ khi không còn CRITICAL/MAJOR **và**, với bug task, original repro status là `PASS` có evidence kiểm chứng được.
+
+### Round ≥ 2 — delta review
+
+Round 2+ **không review lại cả task từ đầu**:
+1. Đọc report round trước (path do primary truyền) → lấy `Ref`, `Files`, Findings; đọc danh sách `finding → fix` của builder.
+2. Delta = `git diff <Ref round trước>` (so với working tree — gồm cả fix đã commit lẫn chưa commit).
+   Round trước `tree dirty` (builder chỉ commit sau PASS) → diff này còn chứa code đã review: chỉ soi hunk ở file/dòng
+   builder khai trong `finding → fix` + file mới hoặc đổi `+a/-d` so với `Files` round trước; hunk không đổi → không review lại.
+3. Re-check **từng** finding cũ: fixed? + evidence (file:line / test).
+4. Chạy lại **toàn bộ** verify commands; gate chỉ chạy lại trên delta (`aislop scan --changes`, oxlint, ocr file delta,
+   mobile-UI mục liên quan delta).
+5. **Chỉ mở rộng scope** khi fix đụng file ngoài `Files` round trước hoặc đổi shared contract
+   (export/type/API/DTO/schema/navigation/shared hook/cache key) → review đủ phần đó, cân nhắc nâng level, ghi lý do ở `Scope`.
+
+```markdown
+Agent: reviewer · <task id> · round <R> · level <FAST|NORMAL|STRICT> · Verdict PASS|FAIL
+Ref: <git rev-parse HEAD> · tree clean|dirty · Files: <path>(+a/-d), …
+Prev: <report round R-1> · Delta: `git diff <Ref R-1>` — <N> file · Scope: delta | widened(<lý do>)
+Reason: <1 dòng, hoặc "như round R-1">
+Blast radius: <1 dòng, hoặc "như round R-1">
+Repro: PASS|FAIL|BLOCKED — <evidence 1 dòng>        (chỉ bug task)
+
+## Previous findings
+| # | Finding (round R-1) | Fixed? | Evidence |
+|---|---|---|---|
+| 1 | [MAJOR] src/a.ts:42 — <vấn đề> | ✅ | src/a.ts:40-46 + `a.test.ts` PASS |
+| 2 | [MINOR] src/b.tsx:10 — <vấn đề> | ❌ | vẫn còn ở src/b.tsx:12 |
+
+## Verify
+(bảng như round 1)
+
+## Gates
+(1 dòng như round 1)
+
+## New findings
+- none | [CRITICAL|MAJOR|MINOR] file:line — vấn đề → fix   (chỉ trong delta / phần widened)
+
+## Residual risk
+- …                                                    (optional)
+```
+
+Verdict round ≥ 2: PASS chỉ khi mọi finding CRITICAL/MAJOR cũ ✅, không có CRITICAL/MAJOR mới, verify PASS
+và (bug task) repro `PASS`.
+
+Lưu report:
 - Ghi report vào đúng tên: `.context/review-reports/<feature|bug>-<slug>-phase-<N>-task-<NN>-round-<R>-review.md`
   (phase-level: `<feature|bug>-<slug>-phase-<N>-round-<R>-review.md`). Luôn ghi rõ `round-<R>`; không gộp nhiều
   vòng vào một file; rerun cùng round sau khi bị cancel → **ghi đè**, không tạo file trùng.

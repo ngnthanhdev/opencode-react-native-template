@@ -249,6 +249,11 @@ Write the test first. Watch it fail. Write minimal code to pass.
 5. **Max 3 retries per task** — nếu vẫn FAIL → mark BLOCKED → notify human
 6. **Sau khi PASS (tests/typecheck/lint pass):** gọi subagent `reviewer` (`.opencode/agent/reviewer.md`) review độc lập → PASS mới commit/đóng task; FAIL → quay lại builder (max 2 vòng), gọi `error-analyzer` khi fail lặp.
    - Trước khi gọi reviewer: builder đã chạy **Self-check trước khi báo PASS** (`.opencode/agent/builder.md`) — report thiếu dòng `Self-check:` → trả lại builder, chưa gọi reviewer.
+   - **FAIL → builder:** truyền **path report** (`.context/review-reports/...-round-<R>-review.md`), không chép lại nội dung.
+     Builder chỉ sửa các Findings trong report (không mở rộng scope), chạy lại verify, rồi trả danh sách
+     `#<n> [SEV] file:line → fix (file:line mới)` — mỗi finding 1 dòng; không sửa → `#<n> → not fixed: <lý do>`.
+   - **Round R+1:** gọi reviewer kèm path report round R + danh sách `finding → fix` → reviewer chạy **delta review**
+     (`.opencode/agent/reviewer.md` § Round ≥ 2), không review lại cả task.
 
 ## Context Compact Check (`.agent/context-manager.md`)
 

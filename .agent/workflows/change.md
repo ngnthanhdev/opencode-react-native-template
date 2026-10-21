@@ -40,7 +40,7 @@ Classify → Spec delta → Spec Validator → Phase/Task → Human duyệt plan
 - Trình danh sách phase + task + thứ tự. **Chờ user duyệt** mới code.
 
 ### 3.6 Loop
-- Mỗi task: builder implement+test → reviewer độc lập. FAIL → trả lại builder (max 2 vòng).
+- Mỗi task: builder implement+test → reviewer độc lập. FAIL → trả lại builder kèm path report (max 2 vòng); vòng sau reviewer chỉ delta review (`.agent/loop.md` mục 6).
 - Test/check fail, acceptance criteria chưa đạt, hoặc behavior sau update chưa khớp spec delta → **chưa xong**;
   quay lại builder cập nhật trong cùng task. Không được báo done chỉ vì đã edit code.
 - Retry / Escalation Policy:

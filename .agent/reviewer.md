@@ -11,7 +11,7 @@ Sử dụng `REVIEWER_MODEL` từ `.env.local` (recommended: khác hãng với C
 - Hoặc khi human request review
 
 ## Output
-- `.context/review-reports/<feature|bug>-<slug>-phase-<N>-task-<NN>-review.md`
+- `.context/review-reports/<feature|bug>-<slug>-phase-<N>-task-<NN>-round-<R>-review.md`
 - Verdict: PASS / FAIL + feedback
 
 ---
@@ -141,27 +141,35 @@ Sử dụng `REVIEWER_MODEL` từ `.env.local` (recommended: khác hãng với C
 
 ## Verdict Flow
 
+Report theo skeleton gọn ở `.opencode/agent/reviewer.md` § Trả về report — **mục tiêu ≤ 500 từ**:
+không chép lại checklist ở trên, không giải thích item OK, không dán log dài.
+
 ```markdown
-# Review Report — layer-0/task-01
+Agent: reviewer · layer-0/task-01 · round 1 · level NORMAL · Verdict FAIL
+Ref: 3f2c1ab · tree dirty · Files: src/screens/Feed.tsx(+48/-6), src/screens/Feed.test.tsx(+30)
+Reason: 1 màn mới, không đụng shared/API/auth
+Blast radius: chỉ màn Feed
 
-Verdict: **PASS** / **FAIL**
+## Verify
+| Command | Result |
+|---|---|
+| `npx tsc --noEmit` | PASS |
+| `npx jest` | PASS |
+| `npx expo lint` | PASS |
 
-## Checklist Results
-- [x] Requirements covered
-- [x] RN patterns correct
-- [ ] Performance: `FlatList` thiếu keyExtractor
+## Gates
+aislop 88 OK · oxlint skip(no config) · ocr skip(not installed) · ai-readable OK · mobile-UI FAIL(1/7) · blitzstrike N/A
 
-## Issues Found
-1. **(blocking)** `FlatList` thiếu `keyExtractor`
-2. **(minor)** Component tái render không cần thiết
-
-## Feedback to Loop
-- Thêm `keyExtractor` vào FlatList
-- Memoize component X
+## Findings
+- [MAJOR] src/screens/Feed.tsx:22 — `FlatList` thiếu `keyExtractor` → thêm `keyExtractor={(item) => item.id}`
+- [MAJOR] src/screens/Feed.tsx:51 — mobile-UI touch target: nút Like 32×32 → hitSlop/padding ≥ 44
+- [MINOR] src/screens/Feed.tsx:60 — `FeedItem` re-render mỗi lần scroll → `React.memo`
 ```
 
 **PASS** → git commit → next task
-**FAIL** → return to Loop with feedback (max 2 rounds, then escalate)
+**FAIL** → return to Loop kèm path report; builder trả `finding → fix` (max 2 rounds, then escalate).
+Round ≥ 2 = **delta review**: chỉ soi diff của fix + bảng re-check finding cũ
+(`.opencode/agent/reviewer.md` § Round ≥ 2).
 
 ### 5b. Layer Review (SPEC_VALIDATOR_MODEL)
 Sau khi ALL tasks trong layer PASS:
